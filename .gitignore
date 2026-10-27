@@ -53,3 +53,12 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Environment secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# PGlite database files (auto-generated at runtime)
+data/
+lib/db/data/

@@ -1,0 +1,35 @@
+[build]
+  base = ""
+  command = "pnpm --filter @workspace/reputelens build"
+  publish = "artifacts/reputelens/dist/public"
+
+[build.environment]
+  NODE_VERSION = "20"
+  PNPM_VERSION = "10.33.0"
+
+# If an external backend URL is specified (e.g. deployed on Railway, Render, Fly.io, or VPS),
+# forward all /api requests directly to that backend.
+[[redirects]]
+  from = "/api/*"
+  to = ":BACKEND_URL/api/:splat"
+  status = 200
+  force = false
+
+# Single Page Application (SPA) redirect rule:
+# Route all dashboard pages (/sentiment, /narratives, /network, /crisis, etc.) to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"

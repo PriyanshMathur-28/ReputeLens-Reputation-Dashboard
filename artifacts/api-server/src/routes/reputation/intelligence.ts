@@ -25,6 +25,7 @@ import {
   interactionsTable,
 } from "@workspace/db";
 import { getDailySeries, getMentionsSince, getPrimaryBrandId } from "../../lib/reputation-metrics";
+import { complete, isLive, providerName } from "../../lib/llm.js";
 
 const router: IRouter = Router();
 
@@ -164,19 +165,59 @@ router.post("/intel/ask", async (req, res): Promise<void> => {
   const citations = ranked.map(({ row }) => fromMention(row));
   const matching = ranked.length;
   const relevantNegatives = ranked.filter(({ row }) => row.mention.sentimentLabel === "negative").length;
-  const answerMarkdown = crisisQuery
-    ? `The data shows a sharp negative spike around a food-safety report. Hygiene and plastic-related mentions were prominent, with anger and disgust appearing in the analyzed posts. The spike included a high-reach influencer and a group of newly created accounts posting similar text; the stored signals indicate coordinated amplification alongside organic complaints. The official response is followed by a measurable improvement in sentiment and lower negative volume.\\n\\nEvidence: ${citations.map((mention) => `[M${mention.id}]`).join(", ")}. This summary is based on ${matching} retrieved mentions; ${relevantNegatives} of those are negative.`
+
+  // Build context snippet for the LLM (top 5 cited mentions)
+  const contextSnippet = citations
+    .map((m, i) => `[M${m.id}] ${m.author} (${m.source}, ${m.sentiment}): ${m.text}`)
+    .join("\n");
+
+  // Offline deterministic fallback answer (always computed, used if LLM unavailable)
+  const offlineAnswer = crisisQuery
+    ? `The data shows a sharp negative spike around a food-safety report. Hygiene and plastic-related mentions were prominent, with anger and disgust appearing in the analyzed posts. The spike included a high-reach influencer and a group of newly created accounts posting similar text; the stored signals indicate coordinated amplification alongside organic complaints. The official response is followed by a measurable improvement in sentiment and lower negative volume.\n\nEvidence: ${citations.map((m) => `[M${m.id}]`).join(", ")}. This summary is based on ${matching} retrieved mentions; ${relevantNegatives} of those are negative.`
     : `I found ${matching} relevant mentions in the selected brand's dataset. ${relevantNegatives} of the cited examples are negative. ${citations.length ? `The highest-priority evidence is [M${citations[0]!.id}].` : "No supporting mentions matched this question."} This offline answer uses only the demo and imported records.`;
+
+  let answerMarkdown = offlineAnswer;
+  let usedProvider = "offline";
+
+  // Try LLM if available
+  if (isLive() && citations.length > 0) {
+    const systemPrompt = `You are ReputeLens, a brand reputation intelligence assistant. 
+You ONLY answer based on the provided evidence mentions. Be concise (3-5 sentences). 
+Do NOT mention fictional brand names. Refer to the brand as "the brand". 
+Always cite evidence using the [Mxxx] notation provided. Do NOT fabricate data.`;
+
+    const userPrompt = `Question: ${question}
+
+Evidence mentions (${matching} retrieved, ${relevantNegatives} negative):
+${contextSnippet}
+
+Provide a clear, evidence-backed answer using the mentions above.`;
+
+    const llmAnswer = await complete([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ], 800);
+
+    if (llmAnswer.trim().length > 20) {
+      answerMarkdown = llmAnswer;
+      usedProvider = providerName();
+    }
+  }
+
   res.json(AskReputeLensResponse.parse({
     answer_markdown: answerMarkdown,
     citations,
-    facts_used: [`${rows.length} analyzed mentions in the 60-day dataset`, `${matching} cited examples`, "Offline rule-based retrieval and scoring"],
+    facts_used: [
+      `${rows.length} analyzed mentions in the 60-day dataset`,
+      `${matching} cited examples`,
+      isLive() ? `AI-powered answer via ${providerName()}` : "Offline rule-based retrieval and scoring",
+    ],
     suggested_followups: [
       "What are customers' biggest complaints about delivery?",
       "Which influencers are most negative this month?",
       "Did our official response work?",
     ],
-    provider: "offline",
+    provider: usedProvider,
   }));
 });
 
@@ -197,13 +238,71 @@ router.post("/intel/explain-spike", async (req, res): Promise<void> => {
   const top = selectedRows.sort((a, b) => b.mention.priorityScore - a.mention.priorityScore).slice(0, 5);
   const coordinated = top.some((row) => row.author.botLikelihood >= 0.5);
   const riskTerms = Array.from(new Set(selectedRows.flatMap((row) => row.mention.riskFlags)));
+
+  // Offline deterministic values (always computed first)
+  const offlineWhatHappened = `The day recorded ${day?.negative ?? 0} negative mentions against a trailing baseline of ${Math.round(baseline)} per day. ${riskTerms.length ? `Common watchlist terms included ${riskTerms.slice(0, 5).join(", ")}.` : "No dominant risk-keyword cluster was found."}`;
+  const offlineDrivers = riskTerms.length
+    ? ["Food safety and hygiene reports", "Customer support and refund concerns", "Rapidly repeated boycott language"]
+    : ["Delivery and app-experience discussions"];
+  const offlineNextStep = "Acknowledge the concern, confirm the investigation and refund path, then update customers with verified findings.";
+
+  let whatHappened = offlineWhatHappened;
+  let mainDrivers = offlineDrivers;
+  let nextStep = offlineNextStep;
+
+  // Enrich with LLM if available
+  if (isLive() && top.length > 0) {
+    const topMentions = top
+      .slice(0, 3)
+      .map((row) => `- ${row.author.handle} (${row.author.followers.toLocaleString()} followers, bot_likelihood=${row.author.botLikelihood.toFixed(2)}): "${row.mention.text.slice(0, 200)}"`)
+      .join("\n");
+
+    const systemPrompt = `You are ReputeLens, a brand reputation crisis analyst. 
+Analyze conversation spikes using ONLY the provided data. Be factual and concise. 
+Do NOT mention real brand names — refer to the brand as "the brand". 
+Respond in plain text (no markdown headers). Keep each section under 3 sentences.`;
+
+    const userPrompt = `Spike date: ${selectedDate}
+Negative mentions on spike day: ${day?.negative ?? 0}
+Baseline (14-day avg): ${Math.round(baseline)} negative/day
+Risk keywords found: ${riskTerms.slice(0, 8).join(", ") || "none"}
+Coordination signal: ${coordinated ? "yes" : "no"}
+
+Top mentions from spike day:
+${topMentions}
+
+Provide:
+1. WHAT_HAPPENED: A 2-sentence factual description of what drove this spike.
+2. MAIN_DRIVERS: Three concise bullet points (no dashes) separated by | identifying the root causes.
+3. NEXT_STEP: One actionable sentence the communications team should execute within 24 hours.
+
+Format your response exactly as:
+WHAT_HAPPENED: <text>
+MAIN_DRIVERS: <driver1> | <driver2> | <driver3>
+NEXT_STEP: <text>`;
+
+    const llmRaw = await complete([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ], 600);
+
+    if (llmRaw.trim().length > 30) {
+      const whatMatch = llmRaw.match(/WHAT_HAPPENED:\s*(.+?)(?=MAIN_DRIVERS:|$)/si);
+      const driversMatch = llmRaw.match(/MAIN_DRIVERS:\s*(.+?)(?=NEXT_STEP:|$)/si);
+      const nextMatch = llmRaw.match(/NEXT_STEP:\s*(.+)/si);
+      if (whatMatch?.[1]) whatHappened = whatMatch[1].trim();
+      if (driversMatch?.[1]) mainDrivers = driversMatch[1].split("|").map((s) => s.trim()).filter(Boolean);
+      if (nextMatch?.[1]) nextStep = nextMatch[1].trim();
+    }
+  }
+
   res.json(ExplainSpikeResponse.parse({
     headline: `Conversation spike on ${selectedDate}`,
-    what_happened: `The day recorded ${day?.negative ?? 0} negative mentions against a trailing baseline of ${Math.round(baseline)} per day. ${riskTerms.length ? `Common watchlist terms included ${riskTerms.slice(0, 5).join(", ")}.` : "No dominant risk-keyword cluster was found."}`,
-    main_drivers: riskTerms.length ? ["Food safety and hygiene reports", "Customer support and refund concerns", "Rapidly repeated boycott language"] : ["Delivery and app-experience discussions"],
+    what_happened: whatHappened,
+    main_drivers: mainDrivers,
     who_drove_it: top.slice(0, 3).map((row) => `${row.author.handle} (${row.author.followers.toLocaleString()} followers)`),
     is_organic: coordinated ? "coordinated" : "mixed",
-    recommended_next_step: "Acknowledge the concern, confirm the investigation and refund path, then update customers with verified findings.",
+    recommended_next_step: nextStep,
   }));
 });
 
@@ -230,24 +329,24 @@ router.post("/network/simulate", async (req, res): Promise<void> => {
   const authors = await db.select().from(authorsTable);
   const interactions = await db.select().from(interactionsTable).where(eq(interactionsTable.brandId, brandId));
   const negativeAuthors = authors.filter((author) => author.avgSentiment < -0.25).sort((a, b) => b.influenceScore - a.influenceScore);
-  const seeds = seed === "coordinated"
-    ? authors.filter((author) => author.role === "suspected_bot").map((author) => author.id).slice(0, 5)
-    : negativeAuthors.slice(0, 5).map((author) => author.id);
+  const seeds: number[] = seed === "coordinated"
+    ? authors.filter((author: any) => author.role === "suspected_bot").map((author: any) => author.id).slice(0, 5)
+    : negativeAuthors.slice(0, 5).map((author: any) => author.id);
   const adjacency = new Map<number, { target: number; probability: number }[]>();
   for (const edge of interactions) {
     const outgoing = adjacency.get(edge.targetAuthorId) ?? [];
     outgoing.push({ target: edge.sourceAuthorId, probability: Math.min(0.3, 0.05 + 0.25 * Math.min(1, edge.weight / 1.2)) });
     adjacency.set(edge.targetAuthorId, outgoing);
   }
-  const outreach = authors.filter((author) => author.role === "bridge").sort((a, b) => b.influenceScore - a.influenceScore).slice(0, 3).map((author) => author.id);
-  const followerById = new Map(authors.map((author) => [author.id, author.followers]));
+  const outreach = authors.filter((author: any) => author.role === "bridge").sort((a: any, b: any) => b.influenceScore - a.influenceScore).slice(0, 3).map((author: any) => author.id);
+  const followerById = new Map<number, number>(authors.map((author: any) => [author.id, author.followers]));
   const scenarios = ["no_response", "fast_response", "influencer_outreach"];
   const output = scenarios.map((scenario, scenarioIndex) => {
     const sums = Array.from({ length: steps }, () => 0);
     let reachSum = 0;
     for (let run = 0; run < runs; run += 1) {
-      const random = createRandom(42 + run * 97 + scenarioIndex * 1009);
-      const active = new Set(seeds);
+      const random = createRandom(42 + run * 97);
+      const active = new Set<number>(seeds);
       let frontier = [...seeds];
       for (let step = 0; step < steps; step += 1) {
         let next: number[] = [];
@@ -265,7 +364,7 @@ router.post("/network/simulate", async (req, res): Promise<void> => {
         frontier = next;
         sums[step] += active.size;
       }
-      reachSum += [...active].reduce((sum, id) => sum + (followerById.get(id) ?? 0) * 0.1, 0);
+      reachSum += [...active].reduce((sum: number, id: number) => sum + (Number(followerById.get(id) ?? 0)) * 0.1, 0);
     }
     return {
       scenario,
@@ -299,6 +398,7 @@ router.get("/settings", async (_req, res): Promise<void> => {
   const [record] = await db.select().from(settingsTable).where(eq(settingsTable.key, "defaults")).limit(1);
   const value = record?.value ?? {};
   const configured = {
+    groq: Boolean(process.env.GROQ_API_KEY),
     reddit: Boolean(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET),
     youtube: Boolean(process.env.YOUTUBE_API_KEY),
   };
@@ -309,8 +409,9 @@ router.get("/settings", async (_req, res): Promise<void> => {
     connectors: [
       { name: "Google News RSS", configured: true, detail: "No key required; feed is available when ingestion runs." },
       { name: "Hacker News", configured: true, detail: "No key required; public search API." },
-      { name: "Reddit", configured: configured.reddit, detail: configured.reddit ? "Credentials detected." : "Add Reddit app credentials to enable." },
-      { name: "YouTube", configured: configured.youtube, detail: configured.youtube ? "API key detected." : "Add a YouTube Data API key to enable." },
+      { name: "Groq AI", configured: configured.groq, detail: configured.groq ? `LLM provider active (${providerName()}).` : "Add GROQ_API_KEY to enable AI-powered answers." },
+      { name: "Reddit", configured: configured.reddit, detail: configured.reddit ? "Credentials detected." : "Pre-generated demo data active; add Reddit app credentials to enable live ingestion." },
+      { name: "YouTube", configured: configured.youtube, detail: configured.youtube ? "API key detected." : "Pre-generated demo data active; add a YouTube Data API key to enable live ingestion." },
     ],
   }));
 });

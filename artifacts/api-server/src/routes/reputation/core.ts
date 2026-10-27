@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
+import { providerName } from "../../lib/llm.js";
 import {
   GetAlertsQueryParams,
   GetAlertsResponse,
@@ -98,7 +99,7 @@ router.get("/system/status", async (_req, res): Promise<void> => {
     ...(process.env.YOUTUBE_API_KEY ? ["YouTube"] : []),
   ];
   res.json(GetSystemStatusResponse.parse({
-    provider: "offline",
+    provider: providerName(),
     mention_count: mentionCount.length,
     last_ingestion: latest[0]?.createdAt?.toISOString() ?? null,
     connectors,
@@ -236,7 +237,7 @@ router.get("/alerts", async (req, res): Promise<void> => {
   const alertRows = await db.select().from(alertsTable).where(eq(alertsTable.brandId, brandId)).orderBy(desc(alertsTable.createdAt));
   const filtered = params.status ? alertRows.filter((alert) => alert.status === params.status) : alertRows;
   const evidenceRows = await getMentionsSince(dateAtStart(59), brandId);
-  const byId = new Map(evidenceRows.map((row) => [row.mention.id, row]));
+  const byId = new Map<number, JoinedMention>(evidenceRows.map((row) => [row.mention.id, row]));
   res.json(GetAlertsResponse.parse(filtered.map((alert) => ({
     id: alert.id,
     type: alert.type,

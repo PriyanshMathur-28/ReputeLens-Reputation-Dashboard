@@ -1,0 +1,10 @@
+{
+  "delivery": ["late", "delivery", "rider", "delivered", "delay", "der se", "late aaya", "tracking", "slow", "fast", "on time", "doorstep", "location", "address", "route", "driver"],
+  "food_quality": ["biryani", "taste", "stale", "cold", "delicious", "fresh", "ingredients", "tasty", "flavour", "paneer", "chicken", "khana", "swad", "portion", "meal", "rotten", "spoiled"],
+  "price": ["price", "cost", "expensive", "cheap", "worth", "paisa", "rupee", "rs", "gold", "discount", "offer", "charge", "fee", "bill", "subscription", "expensive", "mehnga"],
+  "customer_support": ["support", "agent", "executive", "care", "helpline", "ticket", "response", "reply", "phone", "contact", "chat", "customer service", "unhelpful", "resolution"],
+  "app_experience": ["app", "ui", "crash", "bug", "payment", "checkout", "login", "update", "screen", "loading", "stuck", "otp", "interface", "slow app", "failed transaction"],
+  "refunds": ["refund", "money back", "paisa wapas", "cancelled", "deducted", "return", "reversal", "reimbursement", "wallet", "amount", "chargeback"],
+  "hygiene": ["plastic", "hair", "cockroach", "insect", "poisoning", "unsafe", "dirty", "unhygienic", "clean", "seal", "vomit", "fssai", "sick", "hospital", "contaminated"],
+  "packaging": ["packaging", "spill", "container", "box", "lid", "leak", "box", "paper bag", "crushed", "package", "sealed", "tape", "tampered", "cover"]
+}

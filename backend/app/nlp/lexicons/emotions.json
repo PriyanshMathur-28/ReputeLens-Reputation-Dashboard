@@ -1,0 +1,10 @@
+{
+  "joy": ["happy", "love", "great", "excellent", "best", "mast", "zabardast", "awesome", "good", "delight", "amazing", "wonderful", "enjoy", "pleased", "glad", "superb"],
+  "anger": ["angry", "furious", "mad", "worst", "hate", "scam", "ghatiya", "cheat", "rage", "annoyed", "frustrated", "terrible", "hell", "stupid", "idiot", "nonsense"],
+  "fear": ["scared", "fear", "unsafe", "poison", "hospital", "sick", "danger", "warning", "afraid", "risk", "harm", "threat", "terrified", "panic"],
+  "sadness": ["sad", "disappointed", "unhappy", "crying", "regret", "depressing", "lost", "bad", "sorrow", "heartbroken", "gloomy", "pity"],
+  "surprise": ["wow", "shocked", "unexpected", "surprise", "unbelievable", "really", "omg", "sudden", "astonished", "stunned"],
+  "disgust": ["disgusting", "gross", "nasty", "plastic", "hair", "cockroach", "dirty", "vomit", "stale", "rotten", "repulsive", "unhygienic", "yuck", "chhi"],
+  "trust": ["trust", "reliable", "verified", "safe", "secure", "prompt", "honest", "promise", "recommend", "loyal", "faith", "guarantee"],
+  "neutral": ["inquire", "tracking", "order", "update", "info", "question", "status", "delivery", "receipt", "menu", "standard"]
+}
