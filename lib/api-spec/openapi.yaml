@@ -1,22 +1,22 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
+  # Do not change the title: generated import paths depend on it.
   title: Api
   version: 0.1.0
-  description: API specification
+  description: ReputeLens reputation intelligence API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: reputation
+  - name: intelligence
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +24,646 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /system/status:
+    get:
+      operationId: getSystemStatus
+      tags: [reputation]
+      summary: Get service, provider, and data status
+      responses:
+        "200":
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+  /brands:
+    get:
+      operationId: getBrands
+      tags: [reputation]
+      summary: List tracked brands
+      responses:
+        "200":
+          description: Brands
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Brand"
+  /overview:
+    get:
+      operationId: getOverview
+      tags: [reputation]
+      summary: Get overview metrics for a brand and period
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+        - $ref: "#/components/parameters/Days"
+      responses:
+        "200":
+          description: Overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Overview"
+  /timeseries/sentiment:
+    get:
+      operationId: getSentimentTimeseries
+      tags: [reputation]
+      summary: Get daily sentiment, health, and crisis values
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+        - $ref: "#/components/parameters/Days"
+      responses:
+        "200":
+          description: Daily values
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyPoint"
+  /mentions:
+    get:
+      operationId: getMentions
+      tags: [reputation]
+      summary: Search and paginate analyzed mentions
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 25 }
+        - name: sentiment
+          in: query
+          schema: { type: string, enum: [positive, neutral, negative] }
+        - name: aspect
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [date, priority], default: priority }
+      responses:
+        "200":
+          description: Paginated mentions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MentionPage"
+  /topics:
+    get:
+      operationId: getTopics
+      tags: [reputation]
+      summary: Get narrative topics
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+      responses:
+        "200":
+          description: Narrative topics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Topic"
+  /alerts:
+    get:
+      operationId: getAlerts
+      tags: [reputation]
+      summary: Get current and historical alerts
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, acknowledged, resolved] }
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+  /network/graph:
+    get:
+      operationId: getNetworkGraph
+      tags: [reputation]
+      summary: Get the author interaction network
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 10, maximum: 1000, default: 200 }
+      responses:
+        "200":
+          description: Network graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkGraph"
+  /competitors/benchmark:
+    get:
+      operationId: getCompetitorBenchmark
+      tags: [reputation]
+      summary: Compare tracked brands
+      responses:
+        "200":
+          description: Brand comparison
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CompetitorMetric"
+  /geography:
+    get:
+      operationId: getGeography
+      tags: [reputation]
+      summary: Get city-level mention metrics
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+      responses:
+        "200":
+          description: City metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CityMetric"
+  /responses:
+    get:
+      operationId: getResponseActions
+      tags: [reputation]
+      summary: List response actions and their measured impact
+      parameters:
+        - $ref: "#/components/parameters/BrandId"
+      responses:
+        "200":
+          description: Response actions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResponseAction"
+    post:
+      operationId: createResponseAction
+      tags: [reputation]
+      summary: Log a response action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponseActionInput"
+      responses:
+        "201":
+          description: Saved response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseAction"
+  /intel/ask:
+    post:
+      operationId: askReputeLens
+      tags: [intelligence]
+      summary: Ask a cited question about tracked mentions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: Cited answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AskResponse"
+  /intel/explain-spike:
+    post:
+      operationId: explainSpike
+      tags: [intelligence]
+      summary: Explain an unusual day in the conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExplainSpikeRequest"
+      responses:
+        "200":
+          description: Spike explanation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpikeExplanation"
+  /network/simulate:
+    post:
+      operationId: simulateSpread
+      tags: [intelligence]
+      summary: Compare response strategies in an information-spread simulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationRequest"
+      responses:
+        "200":
+          description: Scenario results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+  /evaluation:
+    get:
+      operationId: getModelEvaluation
+      tags: [reputation]
+      summary: Get offline model evaluation results
+      responses:
+        "200":
+          description: Model metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationResult"
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [reputation]
+      summary: Get application settings and connector status
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+    put:
+      operationId: updateSettings
+      tags: [reputation]
+      summary: Update alert thresholds and tracked keyword lists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsInput"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
 components:
+  parameters:
+    BrandId:
+      name: brand_id
+      in: query
+      schema: { type: integer, default: 1 }
+    Days:
+      name: days
+      in: query
+      schema: { type: integer, minimum: 7, maximum: 60, default: 30 }
   schemas:
     HealthStatus:
       type: object
       properties:
-        status:
-          type: string
-      required:
-        - status
-
+        status: { type: string }
+      required: [status]
+    SystemStatus:
+      type: object
+      required: [provider, mention_count, last_ingestion, connectors]
+      properties:
+        provider: { type: string }
+        mention_count: { type: integer }
+        last_ingestion: { type: ["string", "null"], format: date-time }
+        connectors:
+          type: array
+          items: { type: string }
+    Brand:
+      type: object
+      required: [id, name, color, is_primary]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        is_primary: { type: boolean }
+    Overview:
+      type: object
+      required: [brand_id, brand_name, health, crisis, kpis, period]
+      properties:
+        brand_id: { type: integer }
+        brand_name: { type: string }
+        period:
+          type: object
+          required: [days]
+          properties:
+            days: { type: integer }
+        health:
+          type: object
+          required: [score, delta, components]
+          properties:
+            score: { type: number }
+            delta: { type: number }
+            components:
+              type: object
+              additionalProperties: { type: number }
+        crisis:
+          type: object
+          required: [risk, band, components]
+          properties:
+            risk: { type: number }
+            band: { type: string }
+            components:
+              type: object
+              additionalProperties: { type: number }
+        kpis:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              value: { type: number }
+              delta_pct: { type: number }
+    DailyPoint:
+      type: object
+      required: [date, volume, positive, neutral, negative, net_sentiment, health_score, crisis_risk]
+      properties:
+        date: { type: string, format: date }
+        volume: { type: integer }
+        positive: { type: integer }
+        neutral: { type: integer }
+        negative: { type: integer }
+        net_sentiment: { type: number }
+        health_score: { type: number }
+        crisis_risk: { type: number }
+        event: { type: ["string", "null"] }
+    Mention:
+      type: object
+      required: [id, brand_id, text, author, source, created_at, sentiment, sentiment_score, emotion, aspects, priority_score, risk_flags, language]
+      properties:
+        id: { type: integer }
+        brand_id: { type: integer }
+        text: { type: string }
+        author: { type: string }
+        source: { type: string }
+        created_at: { type: string, format: date-time }
+        sentiment: { type: string, enum: [positive, neutral, negative] }
+        sentiment_score: { type: number }
+        emotion: { type: string }
+        aspects:
+          type: array
+          items: { type: string }
+        priority_score: { type: number }
+        risk_flags:
+          type: array
+          items: { type: string }
+        language: { type: string }
+        city: { type: ["string", "null"] }
+        suspicious: { type: boolean }
+        is_sarcastic: { type: boolean }
+        is_complaint: { type: boolean }
+        reach_estimate: { type: integer }
+    MentionPage:
+      type: object
+      required: [items, page, page_size, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Mention" }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+    Topic:
+      type: object
+      required: [id, label, summary, mention_count, avg_sentiment, negative_share, growth_rate, is_emerging, emerged_on]
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        summary: { type: string }
+        mention_count: { type: integer }
+        avg_sentiment: { type: number }
+        negative_share: { type: number }
+        growth_rate: { type: number }
+        is_emerging: { type: boolean }
+        emerged_on: { type: ["string", "null"], format: date }
+        keywords:
+          type: array
+          items: { type: string }
+    Alert:
+      type: object
+      required: [id, type, severity, title, description, status, created_at, metric_value, threshold]
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        severity: { type: string, enum: [low, medium, high, critical] }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [open, acknowledged, resolved] }
+        created_at: { type: string, format: date-time }
+        metric_value: { type: number }
+        threshold: { type: number }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/Mention" }
+    NetworkNode:
+      type: object
+      required: [id, handle, followers, influence_score, sentiment, community, role, bot_likelihood]
+      properties:
+        id: { type: integer }
+        handle: { type: string }
+        followers: { type: integer }
+        influence_score: { type: number }
+        sentiment: { type: number }
+        community: { type: integer }
+        role: { type: string }
+        bot_likelihood: { type: number }
+    NetworkLink:
+      type: object
+      required: [source, target, weight]
+      properties:
+        source: { type: integer }
+        target: { type: integer }
+        weight: { type: number }
+    NetworkGraph:
+      type: object
+      required: [nodes, links, coordinated_accounts]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/NetworkNode" }
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/NetworkLink" }
+        coordinated_accounts: { type: integer }
+    CompetitorMetric:
+      type: object
+      required: [brand_id, name, color, volume, net_sentiment, share_of_voice, health_score, suspicious_reviews]
+      properties:
+        brand_id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        volume: { type: integer }
+        net_sentiment: { type: number }
+        share_of_voice: { type: number }
+        health_score: { type: number }
+        suspicious_reviews: { type: integer }
+    CityMetric:
+      type: object
+      required: [city, volume, net_sentiment, top_negative_aspect, delta_pct]
+      properties:
+        city: { type: string }
+        volume: { type: integer }
+        net_sentiment: { type: number }
+        top_negative_aspect: { type: string }
+        delta_pct: { type: number }
+    ResponseAction:
+      type: object
+      required: [id, action_type, description, responded_at, before_sentiment, after_sentiment, before_negative_per_day, after_negative_per_day, verdict]
+      properties:
+        id: { type: integer }
+        action_type: { type: string }
+        description: { type: string }
+        responded_at: { type: string, format: date-time }
+        before_sentiment: { type: number }
+        after_sentiment: { type: number }
+        before_negative_per_day: { type: number }
+        after_negative_per_day: { type: number }
+        verdict: { type: string }
+    ResponseActionInput:
+      type: object
+      required: [brand_id, action_type, description, responded_at]
+      properties:
+        brand_id: { type: integer }
+        action_type: { type: string, enum: [public_statement, reply, influencer_outreach, product_fix, other] }
+        description: { type: string, minLength: 3 }
+        responded_at: { type: string, format: date-time }
+    AskRequest:
+      type: object
+      required: [question, brand_id]
+      properties:
+        question: { type: string, minLength: 2 }
+        brand_id: { type: integer }
+        history:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content: { type: string }
+    AskResponse:
+      type: object
+      required: [answer_markdown, citations, facts_used, suggested_followups, provider]
+      properties:
+        answer_markdown: { type: string }
+        citations:
+          type: array
+          items: { $ref: "#/components/schemas/Mention" }
+        facts_used:
+          type: array
+          items: { type: string }
+        suggested_followups:
+          type: array
+          items: { type: string }
+        provider: { type: string }
+    ExplainSpikeRequest:
+      type: object
+      required: [brand_id, date]
+      properties:
+        brand_id: { type: integer }
+        date: { type: string, format: date }
+    SpikeExplanation:
+      type: object
+      required: [headline, what_happened, main_drivers, who_drove_it, is_organic, recommended_next_step]
+      properties:
+        headline: { type: string }
+        what_happened: { type: string }
+        main_drivers:
+          type: array
+          items: { type: string }
+        who_drove_it:
+          type: array
+          items: { type: string }
+        is_organic: { type: string }
+        recommended_next_step: { type: string }
+    SimulationRequest:
+      type: object
+      required: [brand_id, steps, runs]
+      properties:
+        brand_id: { type: integer }
+        steps: { type: integer, minimum: 1, maximum: 20, default: 10 }
+        runs: { type: integer, minimum: 10, maximum: 500, default: 100 }
+        seed: { type: string, default: coordinated }
+    SimulationSeries:
+      type: object
+      required: [scenario, steps, expected_reach]
+      properties:
+        scenario: { type: string }
+        steps:
+          type: array
+          items: { type: number }
+        expected_reach: { type: number }
+    SimulationResult:
+      type: object
+      required: [series]
+      properties:
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/SimulationSeries" }
+    ModelMetric:
+      type: object
+      required: [model, accuracy, precision, recall, f1]
+      properties:
+        model: { type: string }
+        accuracy: { type: number }
+        precision: { type: number }
+        recall: { type: number }
+        f1: { type: number }
+    EvaluationResult:
+      type: object
+      required: [models, sarcasm_accuracy, hinglish_accuracy, labeled_count]
+      properties:
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/ModelMetric" }
+        sarcasm_accuracy: { type: number }
+        hinglish_accuracy: { type: number }
+        labeled_count: { type: integer }
+    ConnectorStatus:
+      type: object
+      required: [name, configured, detail]
+      properties:
+        name: { type: string }
+        configured: { type: boolean }
+        detail: { type: string }
+    AppSettings:
+      type: object
+      required: [negative_spike_z, risk_keyword_threshold, connectors, risk_keywords]
+      properties:
+        negative_spike_z: { type: number }
+        risk_keyword_threshold: { type: integer }
+        connectors:
+          type: array
+          items: { $ref: "#/components/schemas/ConnectorStatus" }
+        risk_keywords:
+          type: array
+          items: { type: string }
+    SettingsInput:
+      type: object
+      required: [negative_spike_z, risk_keyword_threshold, risk_keywords]
+      properties:
+        negative_spike_z: { type: number, minimum: 1, maximum: 10 }
+        risk_keyword_threshold: { type: integer, minimum: 1, maximum: 100 }
+        risk_keywords:
+          type: array
+          items: { type: string }

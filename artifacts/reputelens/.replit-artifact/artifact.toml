@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ReputeLens"
+description = "A brand reputation intelligence dashboard for PR and marketing teams, with explainable sentiment, crisis signals, competitor benchmarks, and a realistic offline demo."
+version = "1.0.0"
+id = "artifacts/reputelens"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23845
+
+[services.development]
+run = "pnpm --filter @workspace/reputelens run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/reputelens", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/reputelens/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23845"
+BASE_PATH = "/"

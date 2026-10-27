@@ -1,0 +1,871 @@
+# BUILD SPECIFICATION: "ReputeLens"
+# Brand Reputation Intelligence Dashboard using NLP, Social Network Analytics and Large Language Models
+
+You are an expert full-stack engineer, NLP engineer and data scientist. Build the complete application described below. Read the ENTIRE specification before writing any code. Follow the tech stack, data model, formulas, folder structure and build order exactly. Where this document gives a formula, threshold or rule, implement it exactly as written. Do not skip features, do not replace features with placeholders, and do not leave "TODO" stubs.
+
+## 0. NON-NEGOTIABLE RULES
+
+1. The app MUST start and work with ZERO API keys. On first launch it auto-generates a realistic demo dataset and every page shows real, computed data.
+2. Every LLM-powered feature MUST have an offline fallback (rule-based or template-based). The app must never crash, hang, or show a blank page because an LLM or external API is unavailable.
+3. Never use real brand names or real people in demo data.
+4. Do NOT install torch, transformers, sentence-transformers, spaCy large models, or any package over ~100 MB. Replit cannot handle them reliably.
+5. Whole app runs on ONE port (env PORT, default 8000): FastAPI serves the built React frontend.
+6. All numbers shown in the UI must be computed from the database, never hardcoded.
+7. Every function implementing an NLP, SNA or scoring formula must have a docstring explaining the method (this is an academic project and the methodology must be explainable in a viva/report).
+8. After each build phase (Section 19), run the app, check for errors in both the server log and the browser console, and fix them before continuing.
+
+---
+
+## 1. PROBLEM STATEMENT
+
+Brands are discussed across thousands of social posts, comments, reviews and news articles daily. PR and marketing teams cannot read everything, so they miss:
+
+- WHAT people feel (sentiment and emotion) and ABOUT WHICH part of the business (price, quality, delivery, support, etc.)
+- WHO is driving the conversation (influencers, amplifiers, bridges between communities, coordinated bot-like accounts)
+- WHEN ordinary complaints are turning into a crisis
+- WHY it is happening (the underlying narratives)
+- WHAT to do about it, and whether the response worked
+
+ReputeLens solves this with a 3-layer intelligence pipeline that feeds one dashboard:
+
+1. **NLP layer**: cleaning, language detection, hybrid sentiment, aspect-based sentiment, emotion, sarcasm, complaint/intent/toxicity detection, Hinglish support, narrative (topic) discovery, keyword trends, risk keywords, fake-review signals.
+2. **Social Network Analytics (SNA) layer**: author interaction graph, PageRank/betweenness influence, Louvain communities, coordinated inauthentic behaviour detection, sentiment by community, information-spread simulation.
+3. **LLM layer**: conversational Q&A over the data with citations (RAG), spike explanations, crisis response copilot, executive reports, competitor summaries.
+
+Outputs are combined into an explainable **Reputation Health Score (0–100)** and a **Crisis Risk (0–100)** with a 7-day forecast and an alert engine.
+
+### Target users
+- Brand/PR manager: wants health score, alerts, what to do.
+- Social media analyst: wants mentions, narratives, influencers, network.
+- Executive: wants a weekly brief.
+
+---
+
+## 2. COMPLETE FEATURE LIST (all must be implemented)
+
+| # | Feature | Layer |
+|---|---------|-------|
+| F1 | Hybrid sentiment analysis (VADER + LLM, sarcasm-aware) | NLP |
+| F2 | Aspect-Based Sentiment Analysis (ABSA) with evidence spans | NLP |
+| F3 | Emotion detection (8 emotions) | NLP |
+| F4 | Sarcasm, complaint, purchase-intent and toxicity flags | NLP |
+| F5 | Multilingual support: English, Hindi, Hinglish | NLP |
+| F6 | Narrative/topic discovery + emerging narrative detection | NLP |
+| F7 | Keyword & hashtag trends + word cloud | NLP |
+| F8 | Risk keyword watchlist (hygiene, legal, scam, boycott, safety) | NLP |
+| F9 | Suspicious/fake review detection | NLP + SNA |
+| F10 | Influencer identification and ranking | SNA |
+| F11 | Community detection + sentiment & topic per community | SNA |
+| F12 | Coordinated inauthentic behaviour (bot cluster) detection | SNA |
+| F13 | Bridge/gatekeeper account detection | SNA |
+| F14 | What-If information spread simulator (Independent Cascade) | SNA |
+| F15 | Reputation Health Score with explainable breakdown | Metrics |
+| F16 | Crisis Risk score + 7-day negative-volume forecast | Metrics |
+| F17 | Alert engine (6 alert types, severity, status workflow) | Metrics |
+| F18 | Competitor benchmarking & share of voice | Metrics + LLM |
+| F19 | "Ask ReputeLens" RAG chat with cited mentions | LLM |
+| F20 | "Explain this spike" one-click analysis | LLM |
+| F21 | Crisis Response Copilot (strategy + drafts + outreach list) | LLM + SNA |
+| F22 | Executive Brief / report generator (Markdown + PDF) | LLM |
+| F23 | Response Tracker & impact measurement (before/after) | Metrics |
+| F24 | Geographic (city-level) breakdown | Metrics |
+| F25 | Priority Mention Inbox (triage by impact score) | Metrics |
+| F26 | Model Evaluation page (accuracy, F1, confusion matrix) | NLP |
+| F27 | Data import (CSV/JSON with column mapping) & export (CSV) | Data |
+| F28 | Event annotations on timelines | UX |
+| F29 | Settings: brands, keywords, competitors, thresholds, connectors | UX |
+| F30 | Simple password protection (optional, via secret) | UX |
+
+---
+
+## 3. TECH STACK
+
+### Backend: Python 3.11
+Install these pip packages (latest stable versions):
+`fastapi`, `uvicorn[standard]`, `sqlalchemy>=2`, `psycopg2-binary`, `pydantic>=2`, `pydantic-settings`, `pandas`, `numpy`, `scikit-learn`, `vaderSentiment`, `langdetect`, `networkx>=3`, `httpx`, `feedparser`, `praw`, `apscheduler`, `python-multipart`, `openai`, `google-generativeai`, `python-dateutil`, `pytest`
+
+### Frontend
+React 18 + Vite + TypeScript + Tailwind CSS.
+npm packages: `react-router-dom`, `axios`, `recharts`, `react-force-graph-2d`, `lucide-react`, `react-markdown`, `remark-gfm`, `date-fns`, `clsx`, `react-hot-toast`.
+Do not add other charting or UI libraries. Build the heatmap and word cloud with plain React + CSS (no extra libraries).
+
+### Database
+- Use PostgreSQL via `DATABASE_URL` if present (Replit's built-in Postgres).
+- Otherwise fall back automatically to SQLite at `data/reputelens.db`.
+- Tables are created on startup via `Base.metadata.create_all()`.
+
+### Serving
+- Production: `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`; FastAPI mounts `frontend/dist` as static files and returns `index.html` for any non-`/api` route (SPA fallback).
+- Development: Vite dev server proxies `/api` to the FastAPI port.
+- Provide `run.sh`: installs deps if missing, builds the frontend (`npm run build`), then starts uvicorn. Configure `.replit` so the Run button executes `run.sh`.
+
+---
+
+## 4. ARCHITECTURE & DATA FLOW
+
+```
+[Sources: Google News RSS | Hacker News | Reddit | YouTube | CSV/JSON upload | Demo generator]
+                 │
+                 ▼
+     Ingestion pipeline (dedupe → clean → language detect)
+                 │
+                 ▼
+        NLP layer (sentiment, ABSA, emotion, flags, risk keywords, embeddings)
+                 │
+                 ▼
+        SNA layer (graph build, centrality, communities, bot detection)
+                 │
+                 ▼
+   Batch jobs (topics, emerging narratives, daily metrics, health score, forecast)
+                 │
+                 ▼
+        Alert engine  ──►  Alerts table
+                 │
+                 ▼
+     FastAPI REST API (/api/...)  ◄──►  LLM service (RAG, briefs, copilot)
+                 │
+                 ▼
+         React dashboard (11 pages)
+```
+
+Background jobs (APScheduler, in-process):
+- Every 30 min: ingest from configured live connectors (skip silently if none configured).
+- After each ingestion and on demand: recompute graph metrics, topics, daily metrics, alerts.
+- Heavy recomputation never runs inside a request handler; endpoints trigger a background task and return `202 Accepted` with a job id; `GET /api/jobs/{id}` returns status.
+
+---
+
+## 5. CONFIGURATION & SECRETS
+
+All read from environment via `pydantic-settings` in `backend/app/config.py`. None are required.
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Postgres connection (fallback SQLite) |
+| `OPENAI_API_KEY` | LLM + embeddings (gpt-4o-mini, text-embedding-3-small) |
+| `GEMINI_API_KEY` | Alternative LLM (gemini-1.5-flash, text-embedding-004) |
+| `LLM_PROVIDER` | Optional override: `openai`, `gemini`, `none` |
+| `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT` | Reddit connector |
+| `YOUTUBE_API_KEY` | YouTube comments connector |
+| `APP_PASSWORD` | If set, enables login screen (F30) |
+| `PORT` | Server port, default 8000 |
+
+If Replit AI Integrations provides an OpenAI-compatible endpoint via environment variables, detect and use it first.
+
+---
+
+## 6. DATA MODEL (SQLAlchemy 2.x, `backend/app/models.py`)
+
+Use these exact tables and fields. `JSON` columns use SQLAlchemy `JSON` type (works on both Postgres and SQLite).
+
+**Brand**
+- id (int PK), name (str, unique), keywords (JSON list[str]), hashtags (JSON list[str]), risk_keywords (JSON list[str]), is_primary (bool), competitor_ids (JSON list[int]), color (hex str), created_at
+
+**Author**
+- id (int PK), source (str), handle (str), display_name, followers (int), following (int), account_age_days (int), post_count (int), city (str nullable), is_verified (bool)
+- Computed: pagerank (float), betweenness (float), in_degree (int), out_degree (int), community_id (int nullable), influence_score (float 0–100), bot_likelihood (float 0–1), role (enum: influencer, amplifier, bridge, regular, suspected_bot), avg_sentiment (float)
+- Unique: (source, handle)
+
+**Mention**
+- id (int PK), brand_id (FK), source (enum: reddit, youtube, news, hackernews, twitter_csv, review_csv, demo), external_id (str), author_id (FK), text (text), clean_text (text), url (str nullable), created_at (datetime, indexed), likes (int), shares (int), replies (int), reach_estimate (int), language (str: en, hi, hinglish, other), city (str nullable), rating (int 1–5 nullable, reviews only), parent_external_id (str nullable), mentioned_handles (JSON), hashtags (JSON), text_hash (str, indexed)
+- Unique: (source, external_id)
+- Indexes: brand_id, created_at, (brand_id, created_at)
+
+**MentionAnalysis** (1:1 with Mention)
+- mention_id (PK/FK), sentiment_label (positive/neutral/negative, indexed), sentiment_score (float −1..1), vader_compound (float), llm_sentiment_score (float nullable), emotion (enum: joy, anger, fear, sadness, surprise, disgust, trust, neutral), emotion_scores (JSON dict), aspects (JSON list of {aspect, sentiment, score, evidence}), is_sarcastic (bool), is_complaint (bool), is_purchase_intent (bool), is_question (bool), toxicity (float 0–1), risk_flags (JSON list[str]), fake_review_score (float 0–1 nullable), topic_id (FK nullable), embedding (JSON list[float] nullable), priority_score (float 0–100), analyzed_by (vader | lexicon | llm | hybrid), explanation (str), analyzed_at
+
+**Interaction**
+- id, brand_id, source_author_id (FK), target_author_id (FK), mention_id (FK), type (reply, mention, share, quote), weight (float default 1), created_at
+
+**Topic**
+- id, brand_id, label (str), keywords (JSON list[str]), summary (text), mention_count (int), avg_sentiment (float), negative_share (float), first_seen, last_seen, growth_rate (float), is_emerging (bool), daily_counts (JSON {date: count}), computed_at
+
+**Alert**
+- id, brand_id, type (negative_spike, volume_spike, emerging_narrative, influencer_negative, coordinated_activity, score_drop, risk_keyword), severity (low/medium/high/critical), title, description, metric_value (float), threshold (float), evidence_mention_ids (JSON), related_topic_id (nullable), related_author_ids (JSON), status (open/acknowledged/resolved), created_at, updated_at
+
+**DailyMetric**
+- id, brand_id, date (date), volume, positive, neutral, negative, net_sentiment, avg_sentiment, share_of_voice, engagement, reach, influencer_sentiment, health_score, health_components (JSON), crisis_risk, crisis_components (JSON)
+- Unique: (brand_id, date)
+
+**ResponseAction** (F23)
+- id, brand_id, alert_id (nullable), topic_id (nullable), action_type (public_statement, reply, influencer_outreach, product_fix, other), description, responded_at, created_at
+
+**EventAnnotation** (F28)
+- id, brand_id, date, title, description, kind (launch, campaign, incident, response, other)
+
+**Report**
+- id, brand_id, period_start, period_end, content_markdown, generated_by (llm | template), created_at
+
+**LLMCache**
+- key (str PK, sha256 of task+input), task (str), response (JSON), created_at
+
+**Job**
+- id (uuid str), type, status (queued/running/done/failed), progress (0–100), message, created_at, finished_at
+
+---
+
+## 7. DEMO DATASET (`backend/app/seed/demo_generator.py`)
+
+Runs automatically at startup if the Mention table is empty, and via Settings → "Reset demo data". Use `random.seed(42)` and `numpy.random.seed(42)` so output is deterministic. Total generation + analysis must finish in under 90 seconds offline.
+
+### 7.1 Brands
+- **Zentro Foods** (primary, fictional Indian food-delivery brand). Keywords: `zentro`, `zentro foods`, `@zentrofoods`. Hashtags: `#Zentro`, `#ZentroFoods`. Color `#6366F1`.
+- **QuickBite** (competitor). Color `#F59E0B`.
+- **Tiffino** (competitor). Color `#10B981`.
+- Default risk keywords for all: `plastic`, `hair in food`, `food poisoning`, `hospital`, `fssai`, `lawsuit`, `consumer court`, `scam`, `fraud`, `boycott`, `unsafe`, `expired`, `cockroach`, `data leak`.
+
+### 7.2 Time window
+60 days ending today. Day index 0 = 60 days ago.
+
+### 7.3 Volumes
+- Zentro: ~4,000 mentions. Baseline 50–70/day with weekly seasonality (+20% Fri–Sun).
+- QuickBite: ~1,600; Tiffino: ~1,400. Baselines 20–30/day.
+- Source mix: twitter_csv 40%, reddit 20%, review_csv 20%, news 8%, youtube 10%, hackernews 2%.
+- Baseline sentiment mix for Zentro: 45% positive, 30% neutral, 25% negative. QuickBite: 40/30/30. Tiffino: 50/30/20.
+
+### 7.4 Scripted events (must be detectable by the system)
+1. **Day 20 – Product launch (positive):** Zentro launches "Zentro Gold" subscription. Volume +80% for 3 days, positive share rises to 65%. Aspect focus: price (positive), delivery (positive). Create an EventAnnotation (kind=launch).
+2. **Day 32 – Competitor issue:** QuickBite app outage; QuickBite negative volume ×4 for 2 days, aspect app_experience. Some users mention switching to Zentro (positive for Zentro).
+3. **Day 45 – CRISIS (the key demo scenario):**
+   - A high-follower influencer account (`@foodie_truths_in`, 180k followers) posts that they found plastic in a Zentro biryani in Bengaluru, with a photo description.
+   - Within 2 hours, 25 newly created accounts (account_age_days 2–14, followers 5–60) post near-identical text (small word variations, same hashtags `#BoycottZentro`) within a 30-minute window and mostly interact with each other and retweet the influencer. These are the coordinated cluster.
+   - Organic negative volume rises ×6 for days 45–48, then decays exponentially (half-life 2 days) back to baseline by day 55.
+   - Dominant aspects: hygiene (strongly negative), customer_support (negative: "no response from Zentro"), refunds (negative).
+   - Emotions: anger and disgust dominate.
+   - Risk keywords present: plastic, unsafe, boycott, fssai, consumer court.
+   - Day 47: Zentro posts an official response (create ResponseAction of type public_statement and an EventAnnotation kind=response). After day 47 a share of mentions acknowledge the response ("at least they responded", "refund received"), so post-response sentiment improves measurably.
+4. **Background noise:** a small, persistent negative narrative about "delivery charges increased" across the whole period.
+
+### 7.5 Text generation
+Build mentions from templates with slot filling, to produce at least 300 distinct base templates across aspects:
+`delivery`, `food_quality`, `price`, `customer_support`, `app_experience`, `refunds`, `hygiene`, `packaging`.
+- Include positive, neutral (questions, news-style statements) and negative templates for each aspect.
+- ~15% Hinglish (e.g., "delivery itni late thi, refund bhi nahi mila", "khana ekdum mast tha, Zentro Gold worth it hai", "customer care wale phone hi nahi uthate").
+- ~3% Hindi in Devanagari.
+- ~5% sarcastic (e.g., "Wow, only 90 minutes for a 2 km delivery. Truly lightning fast, Zentro.").
+- News-source mentions should read like headlines + 1–2 sentence summaries.
+- Reviews (review_csv) have a 1–5 rating consistent with sentiment, except: plant 40 suspicious 5-star reviews for Tiffino from new accounts with generic, near-duplicate text ("Best app ever!! Must download!!") within 2 days (for F9).
+- Add hashtags, @mentions and emojis realistically.
+- Assign cities from: Bengaluru, Mumbai, Delhi, Hyderabad, Chennai, Pune, Kolkata, Ahmedabad, Jaipur, Vellore (weighted by population; crisis mentions over-index on Bengaluru).
+
+### 7.6 Authors & interactions
+- ~700 authors per source family, followers from a power-law (Pareto, α≈1.2), capped at 500k.
+- 10 influencers (followers > 50k), a few verified.
+- Generate Interaction rows: replies (25% of mentions are replies to an earlier mention by another author, preferentially attaching to high-follower authors — preferential attachment), @mentions, shares/retweets. The coordinated cluster must form a dense, mostly-internal subgraph.
+- Create 5–7 natural communities (e.g., foodies, budget students, office workers, tech crowd, news/media).
+
+### 7.7 Labeled evaluation set (F26)
+Generate `backend/app/seed/eval_set.json`: 300 mentions with gold labels (sentiment, primary aspect, emotion, is_sarcastic) taken from the template that generated them. Must include sarcastic and Hinglish examples (at least 40 each) so the VADER vs hybrid difference is visible.
+
+### 7.8 Analysis of demo data
+Run the full offline NLP + SNA + metrics + alerts pipeline on the demo data immediately after generation. If an LLM is configured, do NOT automatically spend tokens on all mentions; instead offer "Re-analyze with LLM" in Settings (processes newest 1,000 mentions in batches, with progress shown).
+
+---
+
+## 8. DATA INGESTION (`backend/app/ingestion/`)
+
+Every connector implements:
+```python
+class Connector(Protocol):
+    name: str
+    def is_configured(self) -> bool: ...
+    def fetch(self, brand: Brand, since: datetime) -> list[RawMention]: ...
+```
+
+1. **google_news.py**: `https://news.google.com/rss/search?q=<keyword>&hl=en-IN&gl=IN&ceid=IN:en` via feedparser. Author = publisher name. No key needed.
+2. **hackernews.py**: `https://hn.algolia.com/api/v1/search_by_date?query=<keyword>&tags=(story,comment)`. Use parent ids to create reply interactions. No key needed.
+3. **reddit.py**: praw search across `r/all` and `r/india`, `r/bangalore`, `r/mumbai`; pull top-level comments; reply interactions from comment trees. Enabled only if Reddit secrets exist.
+4. **youtube.py**: search videos for keyword, fetch commentThreads with replies. Enabled only if `YOUTUBE_API_KEY` exists.
+5. **csv_import.py** (F27): accepts `.csv` or `.json` upload (max 20 MB). Two-step flow:
+   - Step 1 `POST /api/ingest/upload/preview` returns detected columns and first 10 rows.
+   - Step 2 `POST /api/ingest/upload/commit` with a column mapping: `{text, author, created_at, likes?, shares?, replies?, url?, reply_to?, rating?, city?, followers?, source_type}`. Parse dates flexibly (dateutil). Rows missing text are skipped and counted in the result.
+
+**Pipeline (`pipeline.py`)** for each RawMention:
+1. Deduplicate by (source, external_id) and by `text_hash` (sha1 of normalized text) within the same author.
+2. Match to brand by keywords/hashtags (case-insensitive, word-boundary regex).
+3. Clean: strip URLs, collapse whitespace, convert emojis to short text tokens using a small built-in dict (😡→"angry", 😍→"love", 🤮→"disgusting", 👍→"good", 😂→"laughing", 🙏→"please"), extract hashtags and @handles.
+4. Language detection (Section 9.5).
+5. Upsert Author; create Interaction rows from reply_to and @mentions.
+6. Run NLP analysis (Section 9).
+7. Commit in batches of 200.
+8. After the batch: trigger SNA recompute, topic recompute (if ≥ 50 new mentions), daily metrics, alerts.
+
+Connectors that are not configured appear as "Not configured" in Settings with setup instructions and never raise errors at startup.
+
+---
+
+## 9. NLP LAYER (`backend/app/nlp/`)
+
+### 9.1 F1 – Hybrid sentiment (`sentiment.py`)
+- Always compute VADER compound on `clean_text`.
+- For Hinglish/Hindi text, first apply the Hinglish lexicon (Section 9.5) to compute a lexicon score; offline score = average of VADER and lexicon score.
+- If LLM available: LLM returns `sentiment_score` in −1..1 (prompt P1, Section 14.1).
+- Final score:
+  - Both available: `0.4 * vader + 0.6 * llm`
+  - If `is_sarcastic` is true and LLM available: use LLM score alone.
+  - Offline only: VADER (or VADER+lexicon average for Hinglish).
+- Label: score > 0.05 → positive; score < −0.05 → negative; else neutral.
+- Offline sarcasm heuristic (sets `is_sarcastic`): positive VADER (> 0.3) AND contains a negative aspect cue (late, cold, stale, missing, wrong, 90 minutes, hours, again) OR patterns like "wow", "great", "truly", "love it" followed by a complaint word within the same sentence. When triggered offline, flip the sign of the score and multiply by 0.7.
+
+### 9.2 F2 – Aspect-Based Sentiment (`absa.py`)
+Fixed taxonomy: `delivery`, `food_quality`, `price`, `customer_support`, `app_experience`, `refunds`, `hygiene`, `packaging`, `other`.
+- Offline: `lexicons/aspects.json` maps each aspect to 20–40 English + Hinglish keywords (e.g., delivery: late, delivery, rider, delivered, delay, "der se", "late aaya"...). Split text into sentences; for each sentence containing an aspect keyword, aspect sentiment = VADER (+Hinglish lexicon) of that sentence; evidence = that sentence (trimmed to 120 chars).
+- LLM: prompt P1 returns aspects with sentiment, score and an evidence span copied verbatim from the text.
+- Output stored as list: `[{"aspect": "delivery", "sentiment": "negative", "score": -0.7, "evidence": "arrived 90 minutes late"}]`.
+
+### 9.3 F3 – Emotion (`emotion.py`)
+8 classes: joy, anger, fear, sadness, surprise, disgust, trust, neutral.
+- Offline: `lexicons/emotions.json` (NRC-style, ~60 words per emotion incl. Hinglish and emoji tokens). emotion_scores = normalized keyword counts; top emotion if max count > 0 else neutral.
+- LLM: prompt P1 returns emotion and per-emotion probabilities.
+
+### 9.4 F4 – Flags (`flags.py`)
+- `is_complaint`: negative sentiment AND (aspect present OR complaint cues: "worst", "never again", "refund", "complaint", "not received", "nahi mila").
+- `is_purchase_intent`: cues "should I order", "planning to buy", "worth it?", "subscribe", "which is better", "kya lena chahiye".
+- `is_question`: ends with "?" or starts with question words.
+- `toxicity` (0–1): offline = share of tokens in `lexicons/toxic.json` (profanity/insults list incl. common Hindi slurs), scaled and capped at 1; LLM overrides when available.
+
+### 9.5 F5 – Multilingual
+- `langdetect` with seed fixed (`DetectorFactory.seed = 0`).
+- Devanagari characters present → `hi`.
+- Latin script AND ≥ 2 tokens found in `lexicons/hinglish_vocab.json` (common Hinglish words: hai, nahi, bahut, tha, kya, mast, bekar, ekdum, accha, bura, khana, paisa, wapas...) → `hinglish`.
+- `lexicons/hinglish_sentiment.json`: ~300 Hinglish/Hindi words and phrases with polarity −1..1 (bekar −0.7, mast 0.8, ghatiya −0.9, zabardast 0.9, "paisa vasool" 0.8, "time waste" −0.6...).
+- LLM handles all languages natively and also returns an English translation (stored in explanation context, shown in the mention drawer).
+
+### 9.6 F6 – Narrative discovery (`topics.py`)
+Runs per brand over the selected window (default last 60 days, max 5,000 most recent mentions).
+1. Vectors: LLM embeddings if available (cached in `embedding`); otherwise TF-IDF (1–2 grams, max_features 5,000, English stopwords + custom Hinglish stopwords) reduced with TruncatedSVD to 100 dims.
+2. KMeans for k in 4..12, pick k with best silhouette score (sample 2,000 points for silhouette to keep it fast).
+3. Keywords per topic: top 8 TF-IDF terms by cluster centroid (class-based TF-IDF).
+4. Label & summary: LLM prompt P2 (3–6 word label + 2-sentence summary). Offline: label = top 3 keywords title-cased joined by " · "; summary = template using size, avg sentiment and top aspect.
+5. Per topic store mention_count, avg_sentiment, negative_share, first_seen, last_seen, daily_counts.
+6. **Emerging** if: count in last 48h ≥ 3 × (7-day average daily count × 2) AND ≥ 20 mentions in last 48h. growth_rate = (last 48h count) / max(1, previous 48h count) − 1.
+7. Since the "today" of demo data is after the crisis decays, emerging detection must ALSO be evaluated historically for every day (sliding window) and stored on the Topic as `emerged_on` date in daily_counts metadata, so the UI can show "emerged on day 45". Add field `emerged_on` (date nullable) to Topic.
+
+### 9.7 F7 – Keyword & hashtag trends (`keywords.py`)
+- Top 50 terms (excluding brand keywords and stopwords) and top 30 hashtags for a period, with counts, avg sentiment, and change vs previous equal-length period.
+- "Rising terms": terms with largest positive change in frequency (min count 10).
+- Word cloud data: `[{text, value, sentiment}]` — UI colors words by sentiment.
+
+### 9.8 F8 – Risk keyword watchlist (`risk.py`)
+- Match brand `risk_keywords` (word-boundary, case-insensitive; plus Hinglish variants) and store matches in `risk_flags`.
+- Categories for display: hygiene/safety (plastic, hair in food, cockroach, food poisoning, unsafe, expired, hospital), legal (lawsuit, consumer court, fssai, legal notice), trust (scam, fraud, data leak), activism (boycott).
+- Feeds alert type `risk_keyword` and priority score.
+
+### 9.9 F9 – Suspicious/fake review detection (`fake_reviews.py`)
+For mentions with source review_csv, compute `fake_review_score` (0–1) = mean of these signals (each 0 or 1, or 0–1):
+- Rating–text mismatch: rating ≥ 4 with sentiment < −0.2, or rating ≤ 2 with sentiment > 0.4.
+- Near-duplicate: TF-IDF cosine > 0.85 with another review from a different author within 7 days.
+- New account: account_age_days < 14.
+- Burst: author is among ≥ 10 same-rating reviews for the same brand within 48h.
+- Generic text: < 6 words and no aspect detected.
+Flag as suspicious if score ≥ 0.6. Show counts per brand on the Competitors page and in the Inbox filter.
+
+### 9.10 Priority score (F25)
+For each mention:
+```
+severity  = max(0, -sentiment_score)                              # 0..1
+reach     = log10(1 + reach_estimate) / log10(1 + max_reach_in_brand)   # 0..1
+influence = author.influence_score / 100                          # 0..1
+risk      = 1 if risk_flags else 0
+priority_score = 100 * (0.35*severity + 0.25*reach + 0.25*influence + 0.15*risk)
+```
+`reach_estimate` = followers × 0.1 + likes + 3×shares + 2×replies (compute at ingestion).
+
+### 9.11 Explanation
+Every analyzed mention stores a one-line explanation, e.g. "Negative (−0.72): complaint about hygiene ('plastic in biryani') and support; emotion disgust; risk keyword: plastic." Built from the analysis fields offline; LLM-provided when available.
+
+---
+
+## 10. SOCIAL NETWORK ANALYTICS LAYER (`backend/app/sna/`)
+
+### 10.1 Graph build (`graph_builder.py`)
+- Per brand, directed weighted `networkx.DiGraph`. Nodes = authors who mentioned the brand in the window. Edge u→v for each Interaction (u replied to / mentioned / shared / quoted v). Weight = sum of interaction weights (reply 1.0, mention 0.8, share 1.2, quote 1.0).
+- Node attributes: followers, avg_sentiment of their brand mentions, mention_count.
+- Cache the computed graph metrics in Author rows; recompute after ingestion or on demand.
+
+### 10.2 F10 – Influence (`centrality.py`)
+- PageRank (alpha 0.85, weight="weight").
+- Betweenness centrality: exact if n ≤ 500, else approximate with `k=min(200, n)`, `seed=42`.
+- In/out degree (weighted).
+- Influence score:
+```
+raw = 0.40*minmax(pagerank) + 0.30*minmax(log1p(followers)) + 0.20*minmax(in_degree) + 0.10*minmax(avg_engagement)
+influence_score = 100 * raw
+```
+`avg_engagement` = mean(likes + shares + replies) of the author's mentions.
+
+### 10.3 F11 – Communities (`communities.py`)
+- Louvain on undirected projection: `networkx.community.louvain_communities(G_undirected, weight="weight", seed=42)`.
+- Per community: size, avg sentiment, negative share, dominant topic (most common topic_id), dominant aspect, top 3 influencers, auto-name (offline: "Community #N · <dominant topic label>"; LLM: short descriptive name via prompt P6).
+
+### 10.4 F13 – Bridges
+Top 2% by betweenness who connect ≥ 2 communities (have edges into at least 2 different community_ids) → role `bridge`.
+
+### 10.5 F12 – Coordinated inauthentic behaviour (`bot_detection.py`)
+Per author signals (each 0–1):
+- `s_new` = 1 if account_age_days < 30 else 0
+- `s_low` = 1 if followers < 100 else 0
+- `s_burst` = 1 if ≥ 5 posts within any 60-minute window, scaled
+- `s_dup` = fraction of the author's posts with TF-IDF cosine > 0.85 to posts by OTHER authors within ±30 minutes
+- `s_ratio` = 1 if following/followers > 10 else 0
+```
+bot_likelihood = 0.20*s_new + 0.15*s_low + 0.20*s_burst + 0.35*s_dup + 0.10*s_ratio
+```
+Cluster detection: build a similarity graph connecting authors whose posts are near-duplicates within 30 minutes; connected components with ≥ 5 authors and mean bot_likelihood ≥ 0.5 = **coordinated cluster**. Store cluster id, member ids, first/last post time, shared hashtags, sample texts, and which influencer they amplified (most common reply/share target). Authors with bot_likelihood ≥ 0.7 get role `suspected_bot`.
+
+### 10.6 Roles
+Priority order: suspected_bot → influencer (top 2% influence_score, min 3 authors) → bridge → amplifier (out_degree in top 10% AND ≥ 60% of their posts are shares/replies) → regular.
+
+### 10.7 F14 – Spread simulation (`cascade.py`)
+Independent Cascade model:
+- Activation probability on edge u→v (information flows from v's post to u who interacts — use the REVERSED graph so influence flows from the target to the interacting followers): `p = min(0.3, 0.05 + 0.25 * normalized_weight)`.
+- Inputs: seed author ids (or "top 5 negative influencers"), steps (default 10), runs (default 200, max 500), scenario.
+- Scenarios: `no_response` (base p), `fast_response` (p × 0.6 from step 2 onward), `influencer_outreach` (removes the top 3 bridge nodes from activation).
+- Output per scenario: expected activated count per step (mean and 10th/90th percentile), expected total reach (sum of followers × 0.1 of activated nodes), list of the 50 most-frequently activated node ids.
+- Must finish in < 5 seconds for 1,000 nodes (use adjacency lists and numpy random, not networkx calls inside the loop).
+
+---
+
+## 11. METRICS & SCORES (`backend/app/services/metrics.py`)
+
+### 11.1 Daily metrics (per brand per day)
+- volume, positive, neutral, negative counts
+- `net_sentiment = (positive − negative) / max(1, volume) × 100`  (range −100..100)
+- `avg_sentiment` = mean sentiment_score
+- `share_of_voice = brand_volume / (brand_volume + sum competitor volumes)` for the same day
+- engagement = sum(likes + shares + replies); reach = sum(reach_estimate)
+- `influencer_sentiment` = mean sentiment of mentions by authors with role influencer (null → 0)
+
+### 11.2 F15 – Reputation Health Score (0–100)
+Compute for each day using a trailing 7-day window ending that day:
+```
+C1 net sentiment       = (net_sentiment_7d + 100) / 2                       weight 0.35
+C2 sentiment trend     = clip(50 + 500 * slope_of_avg_sentiment_7d, 0, 100) weight 0.15   (slope via numpy.polyfit, per day)
+C3 crisis safety       = 100 − crisis_risk                                   weight 0.20
+C4 influencer sentiment= (influencer_sentiment_7d + 1) * 50                  weight 0.15
+C5 share of voice      = clip(100 * sov_7d / fair_share, 0, 100)            weight 0.15   (fair_share = 1 / number_of_brands_compared)
+health_score = round(Σ weight × component, 1)
+```
+Store each component in `health_components` so the UI can show the exact breakdown and which component moved most.
+
+### 11.3 F16 – Crisis Risk (0–100) and forecast
+```
+neg_series = daily negative counts
+mean14, std14 = trailing 14-day mean and std (excluding today); std floor = max(std14, 1)
+z = (today_neg − mean14) / std14
+C_spike       = clip(20 × z, 0, 50)
+C_narrative   = 15 if any emerging topic with negative_share ≥ 0.6 in last 48h
+C_influencer  = 15 if any influencer mention with sentiment ≤ −0.5 in last 24h
+C_coordinated = 10 if a coordinated cluster active in last 48h
+C_risk_kw     = 10 if ≥ 10 risk-keyword mentions in last 24h
+crisis_risk = min(100, sum of components)
+```
+Risk bands: 0–24 Low (green), 25–49 Elevated (yellow), 50–74 High (orange), 75–100 Critical (red).
+
+Forecast: Holt's linear exponential smoothing implemented in numpy (alpha 0.5, beta 0.3) on the last 30 days of negative counts, 7 days ahead, with 95% band = forecast ± 1.96 × std(residuals). Return `{date, forecast, lower, upper}`. Show on Overview and Crisis Center.
+
+### 11.4 F24 – Geography
+Per city: volume, net sentiment, top negative aspect, change vs previous period. Mentions without a city are grouped as "Unknown" and excluded from ranking.
+
+### 11.5 F23 – Response impact
+For each ResponseAction at time T:
+- before window = T−72h..T, after window = T..T+72h (or until now)
+- report: avg sentiment before/after, negative volume per day before/after, % change, mentions acknowledging the response (offline: cues "responded", "apolog", "refund received", "they replied", "jawab diya"; LLM: classify), and a verdict: Effective (sentiment ↑ ≥ 0.1 and negative volume ↓ ≥ 20%), Partially effective, Not effective.
+
+---
+
+## 12. F17 – ALERT ENGINE (`backend/app/services/alerts.py`)
+
+Runs after each metrics recompute; also backfilled across the whole demo period at seed time so historical alerts exist (with their original dates).
+
+| Type | Trigger | Severity |
+|------|---------|----------|
+| negative_spike | negative-count z ≥ 2.5 | z ≥ 5 critical, ≥ 3.5 high, else medium |
+| volume_spike | total volume z ≥ 3 | z ≥ 5 high, else medium |
+| emerging_narrative | topic becomes emerging | negative_share ≥ 0.6 → high, else medium |
+| influencer_negative | influencer mention sentiment ≤ −0.5 | followers ≥ 100k high, else medium |
+| coordinated_activity | coordinated cluster detected | ≥ 20 accounts high, else medium |
+| score_drop | health score down ≥ 10 points vs 1 day earlier | ≥ 20 critical, else high |
+| risk_keyword | ≥ 10 risk-keyword mentions in 24h | hygiene/legal categories → high, else medium |
+
+Rules: no duplicate open alert of the same type for the same brand within 24h (update the existing one instead). Each alert stores evidence (top 10 mention ids by priority score), related topic and related authors. Status workflow: open → acknowledged → resolved, editable in UI.
+
+---
+
+## 13. LLM SERVICE (`backend/app/services/llm.py`)
+
+```python
+class LLMClient:
+    def is_available(self) -> bool
+    def provider_name(self) -> str          # "openai" | "gemini" | "replit" | "offline"
+    def complete(self, system: str, user: str, json_schema: dict | None = None, max_tokens: int = 1200) -> str
+    def complete_json(self, system: str, user: str, model_cls: type[BaseModel]) -> BaseModel | None
+    def embed(self, texts: list[str]) -> list[list[float]] | None
+```
+- Provider order: Replit AI Integrations → OPENAI_API_KEY → GEMINI_API_KEY → offline. `LLM_PROVIDER` overrides.
+- temperature 0.2 for analysis, 0.5 for drafting.
+- `complete_json` validates with pydantic; on failure retries once with "Return ONLY valid JSON matching the schema"; returns None on second failure (caller falls back).
+- Timeout 30s; on HTTP 429/5xx retry with exponential backoff (1s, 2s, 4s), then fall back.
+- Cache all results in LLMCache by sha256(task + model + input).
+- Embeddings in batches of 100; truncate texts to 2,000 chars.
+- Expose `GET /api/system/status` returning provider, model, connectors configured, mention counts, last ingestion time.
+
+---
+
+## 14. LLM FEATURES & PROMPTS (`backend/app/intel/`, prompts in `prompts.py`)
+
+### 14.1 P1 – Batch mention analysis (used by F1–F5)
+System:
+"You are an expert brand-reputation analyst for the Indian market. You understand English, Hindi and Hinglish, Indian slang, and sarcasm. Analyze each social media mention about the brand. Be precise and conservative. Copy evidence spans verbatim from the text."
+User: brand name, aspect taxonomy, emotion list, and a JSON array of up to 20 `{id, text}`.
+Required JSON output:
+```json
+{"results": [{"id": 123, "sentiment_score": -0.8, "is_sarcastic": false,
+  "emotion": "anger", "emotion_scores": {"anger": 0.7, "disgust": 0.2, "neutral": 0.1},
+  "aspects": [{"aspect": "hygiene", "sentiment": "negative", "score": -0.9, "evidence": "found plastic in my biryani"}],
+  "is_complaint": true, "is_purchase_intent": false, "toxicity": 0.1,
+  "english_translation": null, "explanation": "Strong hygiene complaint with disgust."}]}
+```
+
+### 14.2 P2 – Topic labelling (F6)
+Input: top keywords + 15 representative mentions (closest to centroid). Output: `{"label": "3-6 words", "summary": "2 sentences", "sentiment_reason": "1 sentence"}`.
+
+### 14.3 F19 – "Ask ReputeLens" RAG chat (`rag.py`)
+1. Parse the question for brand, time range, aspect, competitor, sentiment (use LLM function-style JSON extraction when available; offline regex/keyword matching on aspect names, competitor names, "last week", "yesterday", "day 45", dates).
+2. Retrieve: top 30 mentions by cosine similarity (embeddings or TF-IDF) filtered by the parsed constraints, re-ranked by 0.7 × similarity + 0.3 × priority_score/100.
+3. Attach a "facts pack" of computed aggregates for the range: volume, net sentiment, health score change, top aspects, top topics, top influencers, alerts.
+4. LLM answer (prompt P3) with rules: "Use ONLY the facts pack and mentions. Cite mentions as [M<id>]. If the data does not support an answer, say so. Never invent numbers."
+5. Response: `{answer_markdown, citations: [mention objects], facts_used, suggested_followups: [3 questions]}`.
+6. Offline: templated answer composed from the facts pack + top 5 retrieved mentions, clearly labelled.
+7. Suggested starter questions in UI: "Why did sentiment drop around the crisis?", "What are customers' biggest complaints about delivery?", "Which influencers are most negative this month?", "How does our refund sentiment compare to QuickBite?", "Did our official response work?", "What are Hinglish-speaking users saying?"
+8. Multi-turn: pass last 6 messages as history.
+
+### 14.4 F20 – Explain this spike (`explain.py`)
+Input: brand, date. Gather that day's metrics vs 14-day baseline, top topics that day, top 20 mentions by priority, top authors, alerts. LLM prompt P4 → `{headline, what_happened, main_drivers: [..], who_drove_it: [..], is_organic: "organic|coordinated|mixed", recommended_next_step}`. Offline: template from the same data (is_organic = coordinated if a coordinated cluster was active that day).
+
+### 14.5 F21 – Crisis Response Copilot (`crisis.py`)
+Input: alert_id or topic_id. Gather evidence mentions, aspects, emotions, communities involved, influencers and bridges involved, coordinated cluster info, risk keywords, spread simulation results (no_response vs fast_response).
+LLM prompt P5 output:
+```json
+{"root_cause": "...", "evidence_summary": ["..."],
+ "severity_assessment": "...",
+ "strategy": "acknowledge|clarify|apologize_and_fix|monitor|counter_misinformation",
+ "strategy_reasoning": "...",
+ "draft_replies": [{"tone": "empathetic", "text": "..."}, {"tone": "formal", "text": "..."}, {"tone": "brief", "text": "..."}],
+ "public_statement": "...",
+ "outreach_list": [{"author_id": 1, "handle": "@x", "reason": "..."}],
+ "do_not": ["..."],
+ "monitoring_plan": "..."}
+```
+Outreach list comes from SNA (top influencers and bridges in affected communities, excluding suspected bots). If a coordinated cluster is involved, the strategy must mention it and advise reporting the accounts rather than engaging them. Offline: rule-based strategy (hygiene/legal risk → apologize_and_fix; coordinated & low organic share → counter_misinformation; otherwise acknowledge) and template drafts filled with brand name, aspect and city. Always show a banner: "AI-generated drafts — review before publishing." Button "Log as response" creates a ResponseAction.
+
+### 14.6 F22 – Executive Brief (`briefs.py`)
+Input: brand, period (default last 7 days, compared with previous 7). Markdown sections:
+1. Headline (one sentence)
+2. Health Score: value, change, biggest moving component
+3. Key numbers table (volume, net sentiment, share of voice, crisis risk) with change
+4. Top 3 positive drivers (with 1 quoted example each, short)
+5. Top 3 negative drivers (with examples)
+6. Emerging narratives
+7. Network insights: top influencers, notable communities, coordinated activity
+8. Competitor comparison
+9. Response effectiveness (F23)
+10. Recommended actions (3–5, prioritized)
+Offline: same structure filled from templates. UI renders Markdown, offers "Download .md" and "Download PDF" (print stylesheet + `window.print()`).
+
+### 14.7 F18 – Competitor summary
+LLM prompt P7 over aspect-level net sentiment of all brands → "Where we win / Where we lose / Opportunities" (3 bullets each). Offline: computed by comparing aspect net sentiment differences (> 10 points).
+
+### 14.8 P6 – Community naming
+Input: community's top keywords, dominant topic, sample 10 mentions → 2–4 word name.
+
+---
+
+## 15. FRONTEND (`frontend/src/`)
+
+### 15.1 Design system
+- Dark theme default (background slate-950, cards slate-900 with slate-800 border, rounded-2xl, subtle shadow), light theme toggle (persist in localStorage with try/catch).
+- Font: Inter (Google Fonts).
+- Semantic colors: positive `#22C55E`, neutral `#94A3B8`, negative `#EF4444`, emerging/warning `#F59E0B`, critical `#DC2626`, primary `#6366F1`. Brand colors from Brand.color.
+- Emotion colors: joy yellow, anger red, fear purple, sadness blue, surprise pink, disgust olive green, trust teal, neutral gray.
+- Reusable components: `KpiCard` (value, delta arrow, sparkline), `ScoreGauge` (semi-circle SVG), `RiskMeter`, `SentimentBadge`, `EmotionChip`, `AspectChip`, `MentionCard`, `MentionDrawer`, `AuthorDrawer`, `ChartCard` (title, info tooltip explaining the metric, export PNG/CSV), `EmptyState`, `Skeleton`, `ErrorState` with retry, `LLMBadge`, `Heatmap`, `WordCloud`, `DateRangePicker`, `BrandSelector`.
+- Every chart card has an (i) tooltip explaining what it measures and the formula in one or two lines.
+- Responsive: works at 375px width; sidebar collapses to a bottom/drawer menu on mobile; no horizontal page scroll.
+
+### 15.2 Global layout
+- Left sidebar: logo "ReputeLens", nav links with icons for all pages, alert count badge on Crisis Center.
+- Top bar: Brand selector (primary + competitors), date range (7d / 30d / 60d / custom), source multi-select, language filter, LLM status badge (provider name or "Offline mode"), theme toggle, "Refresh data" button.
+- Global filters stored in a React context and reflected in the URL query string.
+- Toast notifications for errors and completed jobs.
+
+### 15.3 Pages
+
+**1. Overview (`/`)**
+- Row 1: Health Score gauge (click → breakdown modal with 5 components, weights, values, and change), Crisis Risk meter with band label, KPI cards: Mentions, Net Sentiment, Share of Voice, Reach, Open Alerts (each with % change vs previous period and sparkline).
+- Row 2: Sentiment over time — stacked area (positive/neutral/negative) with Health Score line on a secondary axis, alert markers (colored dots by severity) and EventAnnotation vertical lines with labels. Clicking a day opens the "Explain this spike" panel (F20).
+- Row 3: Emotion donut; Aspect sentiment diverging bar chart (negative left, positive right); 7-day negative-volume forecast with confidence band.
+- Row 4: "Top priority mentions" (5 MentionCards) and "Latest alerts" (5 items).
+
+**2. Sentiment & Aspects (`/sentiment`)**
+- Aspect × sentiment heatmap (rows aspects, columns positive/neutral/negative, cell = count and %).
+- Aspect × week heatmap of net sentiment.
+- Aspect trend lines (multi-select aspects).
+- Emotion trend (stacked area, % share).
+- Language breakdown (bar) and sentiment by language.
+- Sarcasm panel: count, % of mentions, examples with VADER vs final score shown side by side (demonstrates why the hybrid model matters).
+- Keyword & hashtag trends (F7): word cloud colored by sentiment, rising terms table, top hashtags table.
+- Risk keyword panel (F8): counts by category over time, latest matched mentions.
+- Mentions table: columns date, source icon, author, text (truncated), sentiment badge, emotion, aspects, priority; filters for all fields; full-text search; pagination; Export CSV button. Clicking a row opens MentionDrawer (full text, translation, analysis fields, explanation, aspects with evidence highlighted in the text, author summary, link to source).
+
+**3. Narratives (`/narratives`)**
+- Topic cards grid: label, summary, volume, avg sentiment bar, negative share, growth sparkline, EMERGING badge (with emerged_on date), dominant aspect and emotion.
+- Narrative stream chart: stacked area of daily counts per topic.
+- Topic detail view (click card): keywords, timeline, sentiment trend, top mentions, top authors, communities involved, buttons "Explain" and "Generate response" (opens Copilot).
+- "Recompute topics" button (background job with progress).
+
+**4. Network (`/network`)**
+- react-force-graph-2d canvas: node size ∝ influence_score, color = community, red outline = suspected bot, gold star marker = influencer, diamond/ring = bridge; edge color by source node sentiment; edge width by weight. Controls: node limit slider (100–1,000, default 400, top by influence), toggle "highlight coordinated clusters", community filter, search by handle (centers and highlights node), pause/resume physics.
+- Right panel tabs:
+  - Influencers: table (handle, followers, influence score, PageRank, avg sentiment, role, mentions).
+  - Communities: cards (name, size, avg sentiment, dominant topic/aspect, top influencers).
+  - Bridges: table with communities connected.
+  - Coordinated activity: cluster cards (size, active window, shared hashtags, sample texts, amplified account, avg bot_likelihood) with a "Highlight in graph" button.
+- Clicking a node opens AuthorDrawer: profile stats, metrics, role explanation (why they got this role), bot signals breakdown, their mentions.
+- Must render smoothly; show a fallback table view if the canvas fails.
+
+**5. Crisis Center (`/crisis`)**
+- Crisis Risk meter + component breakdown + 7-day forecast chart.
+- Alert feed: filter by type/severity/status; each item shows icon, title, time, severity chip, metric vs threshold, status dropdown.
+- Alert detail: description, evidence mentions, related topic, related authors, mini timeline, and the Crisis Response Copilot panel (F21) with tabs: Root cause · Strategy · Draft replies (copy buttons) · Public statement · Outreach list · Do not · Monitoring plan; "Log as response" button.
+- Crisis timeline: negative volume with alerts and responses annotated.
+
+**6. What-If Simulator (`/simulate`)** (F14)
+- Seed selector: search authors, or presets ("Top 5 negative influencers", "Coordinated cluster", "Custom").
+- Parameters: steps, runs, scenario checkboxes (no_response, fast_response, influencer_outreach).
+- Output: line chart of expected activated accounts per step per scenario with percentile band, expected reach numbers, % reduction vs no_response, mini graph highlighting most-likely-reached nodes. Short methodology note explaining the Independent Cascade model.
+
+**7. Competitor Benchmark (`/competitors`)** (F18, F9)
+- Health score cards per brand.
+- Share of voice over time (stacked 100% area).
+- Net sentiment by aspect radar chart (all brands).
+- Aspect comparison table with "win/lose" coloring.
+- Volume and net sentiment trend lines per brand.
+- Suspicious review panel: counts and examples per brand.
+- LLM "Where we win / lose / opportunities" summary.
+
+**8. Response Tracker (`/responses`)** (F23)
+- List of ResponseActions; create/edit form (type, description, date-time, linked alert/topic).
+- For each: before/after cards (sentiment, negative volume), chart centered on response time (±72h), acknowledgment count and examples, verdict chip.
+
+**9. Ask ReputeLens (`/ask`)** (F19)
+- Chat UI with starter question chips, streaming-style typing indicator, Markdown answers with [M123] citations rendered as clickable chips that open MentionDrawer, "Facts used" collapsible, follow-up suggestion chips, "Clear chat".
+
+**10. Reports (`/reports`)** (F22)
+- Generate form: brand, period, compare toggle. List of reports. Viewer with Markdown render, download .md, download PDF (print CSS hides app chrome).
+
+**11. Geography (`/geography`)** (F24)
+- City table and horizontal bar chart (volume and net sentiment), top negative aspect per city, city filter applies to mentions list. (No map library.)
+
+**12. Model Evaluation (`/evaluation`)** (F26)
+- For the labeled set: accuracy, macro precision/recall/F1 for VADER-only, Lexicon+heuristics (offline hybrid), and LLM-hybrid (if available; else show "configure an LLM key to compare").
+- Confusion matrices (3×3 heatmaps), per-language accuracy (English vs Hinglish), sarcasm subset accuracy, aspect detection accuracy, emotion accuracy.
+- Short "Methodology" section describing each model and formula.
+
+**13. Settings (`/settings`)** (F27, F29, F30)
+- Brands: add/edit/delete brands, keywords, hashtags, risk keywords, competitors, color.
+- Connectors: status of each (configured / not configured) with setup steps and "Run ingestion now".
+- Import: upload CSV/JSON → preview → column mapping dropdowns → import → result summary (imported, skipped, duplicates).
+- Event annotations: add/edit/delete.
+- Thresholds: alert z-scores, emerging multiplier, bot threshold (stored in a Settings table or JSON file).
+- LLM: provider status, "Re-analyze with LLM" (newest N mentions, progress bar).
+- Data: "Reset demo data" (confirmation dialog), "Export all mentions CSV".
+
+**Login (F30)**: if `APP_PASSWORD` is set, show a login page; on success the server sets an httpOnly signed cookie; all `/api` routes except `/api/health` and `/api/auth/*` require it. If not set, no login.
+
+---
+
+## 16. API SPECIFICATION (prefix `/api`)
+
+All list endpoints accept `brand_id`, `start`, `end` (ISO dates), `sources` (comma list), `language`, and paginate with `page` (default 1) and `page_size` (default 25, max 200). Errors always return `{"error": {"code": "STRING_CODE", "message": "Human readable"}}` with proper HTTP status.
+
+| Method & path | Purpose |
+|---|---|
+| GET /health | liveness |
+| GET /system/status | provider, connectors, counts, last ingestion |
+| POST /auth/login, POST /auth/logout | F30 |
+| GET/POST /brands, PUT/DELETE /brands/{id} | brand CRUD |
+| GET /overview | KPIs, health score + components, crisis risk + components, deltas |
+| GET /timeseries/sentiment | daily pos/neu/neg, net, health score, alerts, annotations |
+| GET /timeseries/forecast | 7-day negative forecast |
+| GET /mentions | filters: sentiment, emotion, aspect, topic_id, source, language, city, risk, sarcastic, complaint, suspicious, q, sort (date/priority/reach) |
+| GET /mentions/{id} | full detail incl. analysis and author |
+| GET /mentions/export | CSV |
+| GET /sentiment/aspects | aspect × sentiment counts |
+| GET /sentiment/aspects/weekly | aspect × week net sentiment |
+| GET /sentiment/emotions | emotion distribution + trend |
+| GET /sentiment/languages | language breakdown |
+| GET /sentiment/sarcasm | stats + examples |
+| GET /keywords | top terms, rising terms, hashtags, word cloud |
+| GET /risk | risk keyword counts by category + mentions |
+| GET /topics, GET /topics/{id}, POST /topics/recompute | F6 |
+| GET /network/graph?limit= | nodes + links for force graph |
+| GET /network/authors, GET /network/authors/{id} | F10 |
+| GET /network/communities | F11 |
+| GET /network/bridges | F13 |
+| GET /network/coordinated | F12 |
+| POST /network/recompute | background job |
+| POST /network/simulate | F14 |
+| GET /alerts, GET /alerts/{id}, PATCH /alerts/{id} | F17 |
+| POST /intel/ask | F19 |
+| POST /intel/explain-spike | F20 |
+| POST /intel/crisis-response | F21 |
+| GET /competitors/benchmark, GET /competitors/summary | F18 |
+| GET /reviews/suspicious | F9 |
+| GET/POST /responses, PUT/DELETE /responses/{id}, GET /responses/{id}/impact | F23 |
+| GET /geography | F24 |
+| GET/POST /annotations, PUT/DELETE /annotations/{id} | F28 |
+| POST /reports/generate, GET /reports, GET /reports/{id} | F22 |
+| GET /evaluation | F26 |
+| POST /ingest/run | trigger connectors |
+| POST /ingest/upload/preview, POST /ingest/upload/commit | F27 |
+| GET/PUT /settings/thresholds | F29 |
+| POST /admin/reset-demo, POST /admin/reanalyze | maintenance |
+| GET /jobs/{id} | background job status |
+
+Example `GET /api/overview` response:
+```json
+{"brand_id": 1, "period": {"start": "2026-09-28", "end": "2026-10-27"},
+ "kpis": {"mentions": {"value": 1980, "delta_pct": 12.4}, "net_sentiment": {"value": 14.2, "delta_pct": -8.1},
+          "share_of_voice": {"value": 0.47, "delta_pct": 3.0}, "reach": {"value": 1250000, "delta_pct": 20.5},
+          "open_alerts": {"value": 3}},
+ "health": {"score": 61.4, "delta": -4.2, "components": {"net_sentiment": 57.1, "trend": 48.0, "crisis_safety": 80.0, "influencer_sentiment": 55.0, "share_of_voice": 70.5}},
+ "crisis": {"risk": 20, "band": "Low", "components": {"spike": 0, "narrative": 0, "influencer": 0, "coordinated": 0, "risk_keywords": 10}},
+ "llm": {"provider": "offline"}}
+```
+
+---
+
+## 17. FOLDER STRUCTURE
+
+```
+/
+├── run.sh
+├── .replit
+├── README.md
+├── data/                          (SQLite file, gitignored)
+├── backend/
+│   ├── requirements.txt
+│   ├── app/
+│   │   ├── main.py                (FastAPI app, routers, static serving, startup seed)
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   ├── models.py
+│   │   ├── schemas.py
+│   │   ├── jobs.py                (background job runner + APScheduler)
+│   │   ├── routers/               (overview, mentions, sentiment, keywords, topics, network,
+│   │   │                           alerts, intel, competitors, responses, geography,
+│   │   │                           annotations, reports, evaluation, ingest, settings, admin, auth)
+│   │   ├── services/              (llm.py, metrics.py, alerts.py, forecast.py, impact.py)
+│   │   ├── nlp/                   (cleaning.py, language.py, sentiment.py, absa.py, emotion.py,
+│   │   │                           flags.py, risk.py, keywords.py, topics.py, fake_reviews.py,
+│   │   │                           priority.py, analyzer.py, lexicons/*.json)
+│   │   ├── sna/                   (graph_builder.py, centrality.py, communities.py,
+│   │   │                           bot_detection.py, cascade.py, roles.py)
+│   │   ├── intel/                 (prompts.py, rag.py, explain.py, crisis.py, briefs.py, competitors.py)
+│   │   ├── ingestion/             (base.py, google_news.py, hackernews.py, reddit.py,
+│   │   │                           youtube.py, csv_import.py, pipeline.py)
+│   │   └── seed/                  (demo_generator.py, templates.py, eval_set.json)
+│   └── tests/                     (pytest tests, Section 20)
+└── frontend/
+    ├── index.html, vite.config.ts, tailwind.config.js, package.json
+    └── src/
+        ├── main.tsx, App.tsx, api.ts, types.ts
+        ├── context/FiltersContext.tsx, ThemeContext.tsx
+        ├── components/  (all reusable components from 15.1)
+        ├── pages/       (Overview, Sentiment, Narratives, Network, Crisis, Simulate,
+        │                 Competitors, Responses, Ask, Reports, Geography, Evaluation, Settings, Login)
+        └── styles/print.css
+```
+
+---
+
+## 18. README.md must include
+Project overview and problem statement; feature list (F1–F30); architecture diagram (text); tech stack; how to run on Replit; secrets table; how each score is computed (formulas from Sections 9–11); NLP, SNA and LLM methodology summaries; demo scenario description (day 20 launch, day 32 competitor outage, day 45 crisis, day 47 response); API list; limitations and future work.
+
+---
+
+## 19. BUILD ORDER (verify each phase before moving on)
+
+**Phase 1 – Foundation:** folder structure, config, DB with Postgres/SQLite fallback, all models, `/api/health`, `/api/system/status`, React app with layout, routing to all pages (placeholder content), theme, filters context, single-port serving, `run.sh`, `.replit`. ✔ App loads, all nav links work.
+
+**Phase 2 – Demo data + offline NLP:** lexicon files, cleaning, language detection, sentiment, ABSA, emotion, flags, risk, priority, demo generator with all scripted events, eval set. ✔ ~7,000 mentions analyzed offline in < 90 s.
+
+**Phase 3 – Metrics + Overview:** daily metrics, health score, crisis risk, forecast, Overview page complete. ✔ Health score visibly drops around day 45 and recovers after day 47.
+
+**Phase 4 – Sentiment & Narratives:** keyword trends, word cloud, sarcasm panel, mentions table + drawer + export, topic discovery, emerging detection, Narratives page. ✔ A hygiene/plastic narrative emerges on day 45.
+
+**Phase 5 – SNA + Network page:** graph, centrality, communities, bridges, bot detection, coordinated clusters, roles, Network page with drawers. ✔ The 25-account cluster is detected and highlighted; @foodie_truths_in is a top influencer.
+
+**Phase 6 – Alerts + Crisis Center:** alert engine with historical backfill, Crisis Center page. ✔ Critical/high alerts exist around day 45 (negative_spike, coordinated_activity, influencer_negative, risk_keyword, emerging_narrative).
+
+**Phase 7 – LLM layer:** LLMClient with all providers and offline mode, caching, P1 re-analysis, RAG chat, explain-spike, crisis copilot, briefs, competitor summary, community naming. ✔ Every feature returns useful output offline; with a key, outputs become LLM-powered without code changes.
+
+**Phase 8 – Remaining pages:** Simulator, Competitors (incl. suspicious reviews), Response Tracker, Geography, Reports, Evaluation. ✔ Response on day 47 shows "Effective" or "Partially effective" verdict; Tiffino's fake-review burst is flagged.
+
+**Phase 9 – Ingestion & settings:** live connectors, CSV/JSON import with mapping, scheduler, settings page, thresholds, annotations, optional login. ✔ Uploading a CSV with custom column names imports correctly.
+
+**Phase 10 – Polish & tests:** loading skeletons, empty and error states everywhere, responsive check at 375px, info tooltips, README, pytest suite passing.
+
+---
+
+## 20. ACCEPTANCE CRITERIA & TESTS
+
+Write pytest tests in `backend/tests/` for:
+- sentiment labels on 10 fixed sentences (incl. 2 sarcastic, 2 Hinglish)
+- ABSA detects correct aspect for 8 fixed sentences
+- health score formula with a hand-computed example
+- crisis risk z-score computation
+- Holt forecast returns 7 points with lower ≤ forecast ≤ upper
+- bot detection flags a synthetic near-duplicate cluster of 6 accounts
+- Independent Cascade returns monotonic non-decreasing cumulative counts and fast_response ≤ no_response on average
+- CSV import with remapped columns
+- LLMClient offline mode returns fallbacks without exceptions
+- API smoke tests: every GET endpoint returns 200 on demo data
+
+The project is complete only when ALL of these hold:
+1. Fresh run with no secrets: app starts, demo data generates automatically, all 13 pages render real data, no browser console errors, no server tracebacks.
+2. Overview shows the health score dip around day 45 and recovery after day 47, with event annotations visible.
+3. Narratives shows a hygiene/plastic narrative flagged EMERGING with emerged_on ≈ day 45.
+4. Network flags the ~25-account coordinated cluster and its amplified influencer.
+5. Crisis Center lists high/critical alerts around day 45, and the Copilot returns strategy, 3 drafts, statement and outreach list (template-based offline).
+6. Ask ReputeLens answers "Why did sentiment drop around the crisis?" with cited mentions.
+7. Simulator shows fast_response reducing expected reach vs no_response.
+8. Response Tracker shows before/after impact for the day 47 response.
+9. Competitors flags Tiffino's suspicious 5-star review burst and shows QuickBite's day-32 outage.
+10. Evaluation page shows metrics and confusion matrices; hybrid offline beats VADER-only on the sarcasm and Hinglish subsets.
+11. Adding OPENAI_API_KEY or GEMINI_API_KEY switches LLM features on without code changes.
+12. API list endpoints paginate; Overview loads in under 2 seconds on demo data.
+13. All pytest tests pass.
+
+---
+
+## 21. CODING STANDARDS & ERROR HANDLING
+
+- Python: type hints everywhere, pydantic schemas for all I/O, `logging` (not print), no bare `except:`.
+- TypeScript: strict mode, shared types in `types.ts`, no `any` unless unavoidable.
+- Wrap every external call (LLM, HTTP connectors) in try/except with logging and a graceful fallback.
+- Never hardcode secrets; read from environment only. Never log secrets.
+- Database indexes as specified; use bulk inserts for seeding.
+- Long tasks run as background jobs with progress reporting.
+- Frontend: every data component handles loading, empty, and error states; API client has a global error interceptor that shows a toast.
+- Use UTC in the database and display in the browser's local time zone.
+- Keep functions small and modules focused; no file over ~400 lines.
+- All demo data is fictional.
+
+## 22. OUT OF SCOPE
+- Scraping sites that forbid it, or bypassing API limits.
+- Paid X/Twitter API (X data comes via CSV import).
+- Auto-posting replies to social platforms (drafts only; humans publish).
+- Image/video analysis.
+
+Start with Phase 1 now. After finishing each phase, briefly state what was built and the verification result, then continue to the next phase until all phases are complete.
