@@ -24,7 +24,7 @@ import {
   settingsTable,
   interactionsTable,
 } from "@workspace/db";
-import { getDailySeries, getMentionsSince } from "../../lib/reputation-metrics";
+import { getDailySeries, getMentionsSince, getPrimaryBrandId } from "../../lib/reputation-metrics";
 
 const router: IRouter = Router();
 
@@ -73,7 +73,7 @@ function macroMetrics(gold: string[], predicted: string[]) {
 
 router.get("/responses", async (req, res): Promise<void> => {
   const params = GetResponseActionsQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const items = await db.select().from(responseActionsTable)
     .where(eq(responseActionsTable.brandId, brandId))
     .orderBy(desc(responseActionsTable.respondedAt));

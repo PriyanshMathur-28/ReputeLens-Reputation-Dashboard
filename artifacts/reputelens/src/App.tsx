@@ -101,13 +101,16 @@ function SentimentChart({ points }: { points: DailyPoint[] }) {
   const path = coords.map((c, i) => `${i ? 'L' : 'M'} ${c.x} ${c.y}`).join(' ');
   return <div className="chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Mentions volume over time">
     {[0, 1, 2, 3].map((line) => <g key={line}><line x1={left} x2={width - right} y1={top + line * (plotH / 3)} y2={top + line * (plotH / 3)} className="chart-grid" /><text x="0" y={top + line * (plotH / 3) + 3} className="chart-label">{Math.round(max * (1 - line / 3))}</text></g>)}
-    {coords.length > 0 && <><path d={`${path} L ${coords.at(-1)?.x} ${top + plotH} L ${coords[0].x} ${top + plotH} Z`} fill="#1d7564" opacity=".08" /><path d={path} fill="none" stroke="#1d7564" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />{coords.map((c, i) => <g key={c.point.date}><circle cx={c.x} cy={c.y} r={c.point.event ? 4 : 2.4} fill={c.point.event ? '#d2a34d' : '#1d7564'} /><title>{`${c.point.date}: ${c.point.volume} mentions${c.point.event ? ` · ${c.point.event}` : ''}`}</title>{(i === 0 || i === coords.length - 1 || i === Math.floor(coords.length / 2)) && <text x={c.x} y={height - 5} textAnchor="middle" className="chart-label">{c.point.date.slice(5)}</text>}</g>)}</>}
+     {coords.length > 0 && <><path d={`${path} L ${coords.at(-1)?.x} ${top + plotH} L ${coords[0].x} ${top + plotH} Z`} fill="#1d7564" opacity=".08" /><path d={path} fill="none" stroke="#1d7564" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />{coords.map((c, i) => <g key={c.point.date}><circle cx={c.x} cy={c.y} r={c.point.event ? 4 : 2.4} fill={c.point.event ? '#d2a34d' : '#1d7564'} /><title>{`${c.point.date.slice(0, 10)}: ${c.point.volume} mentions${c.point.event ? ` · ${c.point.event}` : ''}`}</title>{(i === 0 || i === coords.length - 1 || i === Math.floor(coords.length / 2)) && <text x={c.x} y={height - 5} textAnchor="middle" className="chart-label">{c.point.date.slice(5, 10)}</text>}</g>)}</>}
   </svg></div>;
 }
 function SentimentLegend() { return <div className="legend"><span><i style={{ background: '#1d7564' }} />Mention volume</span><span><i style={{ background: '#d2a34d' }} />Notable event</span></div>; }
 function apiRetry(query: { refetch: () => unknown }) { return () => { void query.refetch(); }; }
 function tableBlank(length: number) { return !length; }
 function formatNum(value?: number) { return value == null ? '—' : Intl.NumberFormat('en', { notation: value > 9999 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value); }
+function formatDecimal(value?: number, digits = 1) { return value == null ? '—' : Number(value).toFixed(digits); }
+function formatSigned(value?: number, digits = 1) { return value == null ? '0' : `${value > 0 ? '+' : ''}${Number(value).toFixed(digits)}`; }
+function todayLabel() { return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()).toUpperCase(); }
 function sentimentTag(sentiment: string) { const cls = sentiment === 'negative' ? 'red' : sentiment === 'positive' ? '' : 'gray'; return <span className={`tag ${cls}`}>{sentiment}</span>; }
 
 function OverviewPage() {
@@ -122,13 +125,14 @@ function OverviewPage() {
   const item = overview.data;
   const primaryError = overview.error || series.error || mentions.error;
   const items = mentions.data?.items ?? [];
-  return <Page title="Reputation, in focus." subtitle="A live read on what people are saying — and what your team should do next." eyebrow="MONDAY, JUNE 16 · COMMAND VIEW" action={<button className="button" data-testid="button-refresh-overview" onClick={() => { void overview.refetch(); void series.refetch(); void mentions.refetch(); }}><RefreshCw size={13} /> Refresh signals</button>}>
+  return <Page title="Reputation, in focus." subtitle="A live read on what people are saying — and what your team should do next." eyebrow={`${todayLabel()} · COMMAND VIEW`} action={<button className="button" data-testid="button-refresh-overview" onClick={() => { void overview.refetch(); void series.refetch(); void mentions.refetch(); }}><RefreshCw size={13} /> Refresh signals</button>}>
     {primaryError ? <LoadState loading={false} error={primaryError} empty={false} retry={apiRetry(overview)}>{null}</LoadState> : overview.isLoading || series.isLoading || mentions.isLoading ? <LoadState loading error={null} empty={false}>{null}</LoadState> : <>
       <div className="metric-grid">
-        <Metric label="Reputation health" value={item?.health.score ?? '—'} delta={`${item?.health.delta && item.health.delta > 0 ? '+' : ''}${item?.health.delta ?? 0} pts vs prior period`} icon={ShieldCheck} />
-        <Metric label="Crisis exposure" value={item?.crisis.risk ?? '—'} delta={`${item?.crisis.band ?? 'No band'} risk band`} icon={Radar} tone={item?.crisis.risk && item.crisis.risk > 55 ? 'down' : 'up'} />
-        <Metric label="Mentions analyzed" value={formatNum(item?.kpis.mentions?.value)} delta={`${item?.kpis.mentions?.delta_pct ?? 0}% vs prior period`} icon={MessageCircle} />
-        <Metric label="Net sentiment" value={`${item?.kpis.net_sentiment?.value ?? '—'}`} delta={`${item?.kpis.net_sentiment?.delta_pct ?? 0}% trend`} icon={Activity} />
+        <Metric label="Reputation health" value={item?.health.score ?? '—'} delta={`${formatSigned(item?.health.delta)} pts vs prior period`} icon={ShieldCheck} tone={item?.health.delta != null && item.health.delta < 0 ? 'down' : 'up'} />
+        <Metric label="Crisis exposure" value={item?.crisis.risk ?? '—'} delta={`${item?.crisis.band ?? 'No band'} risk band`} icon={Radar} tone={item?.crisis.risk && item.crisis.risk > 25 ? 'down' : 'up'} />
+        <Metric label="Mentions analyzed" value={formatNum(item?.kpis.mentions?.value)} delta={`${formatDecimal(item?.kpis.mentions?.delta_pct)}% vs prior period`} icon={MessageCircle} />
+        <Metric label="Net sentiment" value={formatDecimal(item?.kpis.net_sentiment?.value)} delta={`${formatDecimal(item?.kpis.net_sentiment?.delta_pct)}% trend`} icon={Activity} tone={item?.kpis.net_sentiment?.delta_pct != null && item.kpis.net_sentiment.delta_pct < 0 ? 'down' : 'up'} />
+        <Metric label="Estimated reach" value={formatNum(item?.kpis.reach?.value)} delta={`${formatDecimal(item?.kpis.reach?.delta_pct)}% vs prior period`} icon={Users} />
       </div>
       <div className="two-col">
         <Panel title="Conversation volume" note="Daily mentions · current period"><SentimentLegend /><SentimentChart points={series.data ?? []} /></Panel>

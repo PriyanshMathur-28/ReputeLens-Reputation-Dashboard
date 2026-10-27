@@ -371,6 +371,11 @@ export async function getBrand(brandId: number) {
   return brand;
 }
 
+export async function getPrimaryBrandId(): Promise<number> {
+  const [brand] = await db.select({ id: brandsTable.id }).from(brandsTable).where(eq(brandsTable.isPrimary, true)).limit(1);
+  return brand?.id ?? 1;
+}
+
 export async function getMentionsSince(since: Date, brandId?: number) {
   const where = brandId
     ? and(gte(mentionsTable.createdAt, since), eq(mentionsTable.brandId, brandId))

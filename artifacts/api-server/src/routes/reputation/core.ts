@@ -30,6 +30,7 @@ import {
 } from "@workspace/db";
 import {
   getDailySeries,
+  getPrimaryBrandId,
   getMentionsSince,
   loadAnalytics,
   type DailyMetrics,
@@ -117,7 +118,7 @@ router.get("/brands", async (_req, res): Promise<void> => {
 
 router.get("/overview", async (req, res): Promise<void> => {
   const params = GetOverviewQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const days = params.days ?? 30;
   const end = dateAtStart(0);
   const currentStart = dateAtStart(days - 1);
@@ -169,7 +170,7 @@ router.get("/overview", async (req, res): Promise<void> => {
 router.get("/timeseries/sentiment", async (req, res): Promise<void> => {
   const params = GetSentimentTimeseriesQueryParams.parse(req.query);
   const days = params.days ?? 30;
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const series = await getDailySeries(brandId);
   const selected = series.slice(-days).map((item) => ({
     date: item.date,
@@ -187,7 +188,7 @@ router.get("/timeseries/sentiment", async (req, res): Promise<void> => {
 
 router.get("/mentions", async (req, res): Promise<void> => {
   const params = GetMentionsQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const page = params.page ?? 1;
   const pageSize = params.page_size ?? 25;
   const since = dateAtStart(59);
@@ -213,7 +214,7 @@ router.get("/mentions", async (req, res): Promise<void> => {
 
 router.get("/topics", async (req, res): Promise<void> => {
   const params = GetTopicsQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const topics = await db.select().from(topicsTable).where(eq(topicsTable.brandId, brandId));
   res.json(GetTopicsResponse.parse(topics.map((topic) => ({
     id: topic.id,
@@ -223,7 +224,7 @@ router.get("/topics", async (req, res): Promise<void> => {
     avg_sentiment: topic.avgSentiment,
     negative_share: topic.negativeShare,
     growth_rate: topic.growthRate,
-    is_emerging: topic.isEmerging || topic.emergedOn === new Date().toISOString().slice(0, 10),
+    is_emerging: topic.isEmerging || Boolean(topic.emergedOn),
     emerged_on: topic.emergedOn,
     keywords: topic.keywords,
   }))));
@@ -231,7 +232,7 @@ router.get("/topics", async (req, res): Promise<void> => {
 
 router.get("/alerts", async (req, res): Promise<void> => {
   const params = GetAlertsQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const alertRows = await db.select().from(alertsTable).where(eq(alertsTable.brandId, brandId)).orderBy(desc(alertsTable.createdAt));
   const filtered = params.status ? alertRows.filter((alert) => alert.status === params.status) : alertRows;
   const evidenceRows = await getMentionsSince(dateAtStart(59), brandId);
@@ -255,7 +256,7 @@ router.get("/alerts", async (req, res): Promise<void> => {
 
 router.get("/network/graph", async (req, res): Promise<void> => {
   const params = GetNetworkGraphQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const limit = params.limit ?? 200;
   const authors = await db.select().from(authorsTable).orderBy(desc(authorsTable.influenceScore)).limit(limit);
   const ids = new Set(authors.map((author) => author.id));
@@ -303,7 +304,7 @@ router.get("/competitors/benchmark", async (_req, res): Promise<void> => {
 
 router.get("/geography", async (req, res): Promise<void> => {
   const params = GetGeographyQueryParams.parse(req.query);
-  const brandId = params.brand_id ?? 1;
+  const brandId = params.brand_id ?? await getPrimaryBrandId();
   const rows = await getMentionsSince(dateAtStart(59), brandId);
   const previousStart = dateAtStart(59);
   previousStart.setUTCDate(previousStart.getUTCDate() - 60);

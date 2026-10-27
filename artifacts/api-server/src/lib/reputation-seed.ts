@@ -12,6 +12,7 @@ import {
   topicsTable,
   type InsertMention,
 } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 
 type Sentiment = "positive" | "neutral" | "negative";
@@ -263,21 +264,32 @@ async function insertChunks<T>(
 export async function ensureReputeLensDemoData(): Promise<void> {
   const existing = await db.select({ id: brandsTable.id, name: brandsTable.name }).from(brandsTable);
   if (existing.length > 0) {
-    const existingMention = await db.select({ id: mentionsTable.id }).from(mentionsTable).limit(1);
-    if (existingMention.length > 0) return;
+    const [existingMentions, existingTopics, existingEval] = await Promise.all([
+      db.select({ externalId: mentionsTable.externalId }).from(mentionsTable),
+      db.select({ id: topicsTable.id }).from(topicsTable),
+      db.select({ id: evaluationSamplesTable.id }).from(evaluationSamplesTable),
+    ]);
+    if (existingMentions.length >= 6800 && existingTopics.length >= 6 && existingEval.length >= 300) return;
     const expectedNames = new Set(["Zentro Foods", "QuickBite", "Tiffino"]);
-    const isOnlyPartialDemoSeed = existing.length === 3 && existing.every((brand) => expectedNames.has(brand.name));
+    const isOnlyPartialDemoSeed =
+      existing.length === 3 &&
+      existing.every((brand) => expectedNames.has(brand.name)) &&
+      existingMentions.every((mention) => mention.externalId.startsWith("demo-"));
     if (!isOnlyPartialDemoSeed) {
-      logger.warn({ brands: existing.length }, "Skipping demo seed because custom brand data already exists");
+      logger.warn({ brands: existing.length, mentions: existingMentions.length }, "Skipping demo seed because custom brand data already exists");
       return;
     }
+    await db.delete(interactionsTable);
+    await db.delete(mentionsTable);
     await db.delete(annotationsTable);
     await db.delete(alertsTable);
     await db.delete(topicsTable);
     await db.delete(responseActionsTable);
+    await db.delete(evaluationSamplesTable);
+    await db.delete(settingsTable).where(eq(settingsTable.key, "defaults"));
     await db.delete(brandsTable);
     await db.delete(authorsTable);
-    logger.warn("Removed incomplete generated demo seed before retrying");
+    logger.warn({ mentions: existingMentions.length }, "Removed incomplete generated demo seed before retrying");
   }
 
   const random = seededRandom(42);
@@ -290,6 +302,9 @@ export async function ensureReputeLensDemoData(): Promise<void> {
       { name: "Tiffino", color: "#10B981", isPrimary: false, keywords: ["tiffino"], hashtags: ["#Tiffino"], riskKeywords },
     ])
     .returning({ id: brandsTable.id, name: brandsTable.name });
+  const zentroId = insertedBrands.find((brand) => brand.name === "Zentro Foods")!.id;
+  const quickBiteId = insertedBrands.find((brand) => brand.name === "QuickBite")!.id;
+  const tiffinoId = insertedBrands.find((brand) => brand.name === "Tiffino")!.id;
 
   const authors = createBaseAuthors(random);
   const savedAuthors: { id: number; handle: string }[] = [];
@@ -467,42 +482,42 @@ export async function ensureReputeLensDemoData(): Promise<void> {
   await insertChunks(interactions, async (values) => db.insert(interactionsTable).values(values));
 
   const topicRows = [
-    { brandId: 1, label: "Food safety · plastic concern", summary: "Customers reported a hygiene issue involving plastic found in meals. Anger and disgust rose sharply around the incident.", keywords: ["plastic", "hygiene", "unsafe", "biryani", "boycott", "FSSAI", "Bengaluru", "support"], mentionCount: 164, avgSentiment: -0.61, negativeShare: 0.83, growthRate: 5.8, isEmerging: false, emergedOn: dayDate(45, today).toISOString().slice(0, 10) },
-    { brandId: 1, label: "Delivery charges increased", summary: "A persistent discussion about higher delivery fees, with negative price sentiment across the full period.", keywords: ["delivery", "charges", "price", "fees", "order", "increase", "cost", "checkout"], mentionCount: 372, avgSentiment: -0.2, negativeShare: 0.56, growthRate: 0.08, isEmerging: false, emergedOn: null },
-    { brandId: 1, label: "Zentro Gold launch", summary: "Customers reacted to the new subscription, often connecting the price with faster delivery.", keywords: ["Gold", "subscription", "price", "delivery", "value", "launch", "plan", "worth"], mentionCount: 188, avgSentiment: 0.48, negativeShare: 0.12, growthRate: 0.55, isEmerging: false, emergedOn: null },
-    { brandId: 1, label: "Refunds and customer support", summary: "Customers discuss response times, unresolved tickets and refunds, with some positive acknowledgements after the public response.", keywords: ["refund", "support", "reply", "ticket", "response", "customer", "money", "follow-up"], mentionCount: 296, avgSentiment: -0.23, negativeShare: 0.52, growthRate: 0.24, isEmerging: false, emergedOn: null },
-    { brandId: 2, label: "QuickBite app outage", summary: "An app outage increased negative app-experience conversations and prompted some customers to consider alternatives.", keywords: ["app", "outage", "payment", "down", "order", "switching", "checkout", "tracking"], mentionCount: 126, avgSentiment: -0.52, negativeShare: 0.78, growthRate: 3.6, isEmerging: false, emergedOn: dayDate(32, today).toISOString().slice(0, 10) },
-    { brandId: 3, label: "Repeated generic five-star reviews", summary: "A burst of near-identical five-star reviews from recently created accounts shows multiple suspicious-review signals.", keywords: ["best", "app", "download", "review", "five-star", "new account", "generic", "burst"], mentionCount: 40, avgSentiment: 0.9, negativeShare: 0, growthRate: 8.1, isEmerging: false, emergedOn: dayDate(34, today).toISOString().slice(0, 10) },
+    { brandId: zentroId, label: "Food safety · plastic concern", summary: "Customers reported a hygiene issue involving plastic found in meals. Anger and disgust rose sharply around the incident.", keywords: ["plastic", "hygiene", "unsafe", "biryani", "boycott", "FSSAI", "Bengaluru", "support"], mentionCount: 164, avgSentiment: -0.61, negativeShare: 0.83, growthRate: 5.8, isEmerging: false, emergedOn: dayDate(45, today).toISOString().slice(0, 10) },
+    { brandId: zentroId, label: "Delivery charges increased", summary: "A persistent discussion about higher delivery fees, with negative price sentiment across the full period.", keywords: ["delivery", "charges", "price", "fees", "order", "increase", "cost", "checkout"], mentionCount: 372, avgSentiment: -0.2, negativeShare: 0.56, growthRate: 0.08, isEmerging: false, emergedOn: null },
+    { brandId: zentroId, label: "Zentro Gold launch", summary: "Customers reacted to the new subscription, often connecting the price with faster delivery.", keywords: ["Gold", "subscription", "price", "delivery", "value", "launch", "plan", "worth"], mentionCount: 188, avgSentiment: 0.48, negativeShare: 0.12, growthRate: 0.55, isEmerging: false, emergedOn: null },
+    { brandId: zentroId, label: "Refunds and customer support", summary: "Customers discuss response times, unresolved tickets and refunds, with some positive acknowledgements after the public response.", keywords: ["refund", "support", "reply", "ticket", "response", "customer", "money", "follow-up"], mentionCount: 296, avgSentiment: -0.23, negativeShare: 0.52, growthRate: 0.24, isEmerging: false, emergedOn: null },
+    { brandId: quickBiteId, label: "QuickBite app outage", summary: "An app outage increased negative app-experience conversations and prompted some customers to consider alternatives.", keywords: ["app", "outage", "payment", "down", "order", "switching", "checkout", "tracking"], mentionCount: 126, avgSentiment: -0.52, negativeShare: 0.78, growthRate: 3.6, isEmerging: false, emergedOn: dayDate(32, today).toISOString().slice(0, 10) },
+    { brandId: tiffinoId, label: "Repeated generic five-star reviews", summary: "A burst of near-identical five-star reviews from recently created accounts shows multiple suspicious-review signals.", keywords: ["best", "app", "download", "review", "five-star", "new account", "generic", "burst"], mentionCount: 40, avgSentiment: 0.9, negativeShare: 0, growthRate: 8.1, isEmerging: false, emergedOn: dayDate(34, today).toISOString().slice(0, 10) },
   ];
   await db.insert(topicsTable).values(topicRows);
 
   await db.insert(annotationsTable).values([
-    { brandId: 1, date: dayDate(20, today).toISOString().slice(0, 10), title: "Zentro Gold launch", description: "New subscription plan launched with faster delivery benefits.", kind: "launch" },
-    { brandId: 2, date: dayDate(32, today).toISOString().slice(0, 10), title: "QuickBite app outage", description: "App and payment issues increased negative conversation.", kind: "incident" },
-    { brandId: 1, date: dayDate(45, today).toISOString().slice(0, 10), title: "Food safety incident", description: "Fictional influencer report and coordinated posts triggered a rapid crisis spike.", kind: "incident" },
-    { brandId: 1, date: dayDate(47, today).toISOString().slice(0, 10), title: "Official response", description: "Public statement and refund follow-up published.", kind: "response" },
+    { brandId: zentroId, date: dayDate(20, today).toISOString().slice(0, 10), title: "Zentro Gold launch", description: "New subscription plan launched with faster delivery benefits.", kind: "launch" },
+    { brandId: quickBiteId, date: dayDate(32, today).toISOString().slice(0, 10), title: "QuickBite app outage", description: "App and payment issues increased negative conversation.", kind: "incident" },
+    { brandId: zentroId, date: dayDate(45, today).toISOString().slice(0, 10), title: "Food safety incident", description: "Fictional influencer report and coordinated posts triggered a rapid crisis spike.", kind: "incident" },
+    { brandId: zentroId, date: dayDate(47, today).toISOString().slice(0, 10), title: "Official response", description: "Public statement and refund follow-up published.", kind: "response" },
   ]);
 
   const crisisDate = dayDate(45, today);
   const criticalEvidence = mentionRows
     .map((mention, index) => ({ mention, index }))
-    .filter(({ mention }) => mention.brandId === 1 && mention.riskFlags.length > 0)
+    .filter(({ mention }) => mention.brandId === zentroId && mention.riskFlags.length > 0)
     .sort((a, b) => b.mention.priorityScore - a.mention.priorityScore)
     .slice(0, 10)
     .map(({ mention }) => mentionIdByExternal.get(mention.externalId)!)
     .filter(Boolean);
   await db.insert(alertsTable).values([
-    { brandId: 1, type: "negative_spike", severity: "critical", title: "Negative conversation surged 6×", description: "Negative mention volume rose sharply around reports of a food-safety issue.", status: "open", createdAt: crisisDate, metricValue: 6, threshold: 2.5, evidenceIds: criticalEvidence },
-    { brandId: 1, type: "coordinated_activity", severity: "high", title: "Coordinated activity detected", description: "25 newly created accounts posted similar messages in a short window and amplified the same influencer.", status: "open", createdAt: new Date(crisisDate.getTime() + 25 * 60_000), metricValue: 25, threshold: 5, evidenceIds: criticalEvidence },
-    { brandId: 1, type: "risk_keyword", severity: "high", title: "Food safety watchlist matches increased", description: "Mentions matched hygiene and legal watchlist terms including plastic, unsafe, boycott and FSSAI.", status: "acknowledged", createdAt: new Date(crisisDate.getTime() + 35 * 60_000), metricValue: 34, threshold: 10, evidenceIds: criticalEvidence },
-    { brandId: 1, type: "influencer_negative", severity: "high", title: "High-reach negative post detected", description: "@foodie_truths_in reported plastic in a meal and rapidly drove discussion.", status: "open", createdAt: new Date(crisisDate.getTime() + 5 * 60_000), metricValue: 180000, threshold: 100000, evidenceIds: criticalEvidence },
-    { brandId: 1, type: "emerging_narrative", severity: "high", title: "Emerging hygiene narrative", description: "A new hygiene and plastic narrative passed the volume and negative-share thresholds.", status: "open", createdAt: crisisDate, metricValue: 0.83, threshold: 0.6, evidenceIds: criticalEvidence },
-    { brandId: 2, type: "volume_spike", severity: "medium", title: "App outage drove a volume spike", description: "QuickBite app-experience mentions rose during the outage.", status: "resolved", createdAt: dayDate(32, today), metricValue: 4, threshold: 3, evidenceIds: [] },
+    { brandId: zentroId, type: "negative_spike", severity: "critical", title: "Negative conversation surged 6×", description: "Negative mention volume rose sharply around reports of a food-safety issue.", status: "open", createdAt: crisisDate, metricValue: 6, threshold: 2.5, evidenceIds: criticalEvidence },
+    { brandId: zentroId, type: "coordinated_activity", severity: "high", title: "Coordinated activity detected", description: "25 newly created accounts posted similar messages in a short window and amplified the same influencer.", status: "open", createdAt: new Date(crisisDate.getTime() + 25 * 60_000), metricValue: 25, threshold: 5, evidenceIds: criticalEvidence },
+    { brandId: zentroId, type: "risk_keyword", severity: "high", title: "Food safety watchlist matches increased", description: "Mentions matched hygiene and legal watchlist terms including plastic, unsafe, boycott and FSSAI.", status: "acknowledged", createdAt: new Date(crisisDate.getTime() + 35 * 60_000), metricValue: 34, threshold: 10, evidenceIds: criticalEvidence },
+    { brandId: zentroId, type: "influencer_negative", severity: "high", title: "High-reach negative post detected", description: "@foodie_truths_in reported plastic in a meal and rapidly drove discussion.", status: "open", createdAt: new Date(crisisDate.getTime() + 5 * 60_000), metricValue: 180000, threshold: 100000, evidenceIds: criticalEvidence },
+    { brandId: zentroId, type: "emerging_narrative", severity: "high", title: "Emerging hygiene narrative", description: "A new hygiene and plastic narrative passed the volume and negative-share thresholds.", status: "open", createdAt: crisisDate, metricValue: 0.83, threshold: 0.6, evidenceIds: criticalEvidence },
+    { brandId: quickBiteId, type: "volume_spike", severity: "medium", title: "App outage drove a volume spike", description: "QuickBite app-experience mentions rose during the outage.", status: "resolved", createdAt: dayDate(32, today), metricValue: 4, threshold: 3, evidenceIds: [] },
   ]);
 
   const responseAt = dayDate(47, today);
   await db.insert(responseActionsTable).values({
-    brandId: 1,
+    brandId: zentroId,
     actionType: "public_statement",
     description: "Published a public apology, confirmed a safety review, and offered affected customers refunds.",
     respondedAt: responseAt,
